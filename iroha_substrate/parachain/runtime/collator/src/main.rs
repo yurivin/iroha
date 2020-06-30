@@ -31,6 +31,7 @@ use collator::{
 };
 use parking_lot::Mutex;
 use futures::future::{Ready, ok, err, TryFutureExt};
+use std::sync::mpsc::Receiver;
 
 const GENESIS: RuntimeHead = RuntimeHead {
 	number: 0,
@@ -49,6 +50,7 @@ const GENESIS_BODY: RuntimeBody = RuntimeBody {
 #[derive(Clone)]
 struct RuntimeContext {
 	db: Arc<Mutex<HashMap<RuntimeHead, RuntimeBody>>>,
+	rx: Arc<Mutex<Receiver<i32>>>,
 	/// We store it here to make sure that our interfaces require the correct bounds.
 	_network: Option<Arc<dyn Network>>,
 }
@@ -128,14 +130,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		println!();
 	}
 
+	let (tx, rx) = std::sync::mpsc::channel::<i32>();
 	let context = RuntimeContext {
 		db: Arc::new(Mutex::new(HashMap::new())),
 		_network: None,
+		rx: Arc::new(Mutex::new(rx)),
 	};
 
 	let cli = Cli::from_iter(&["-dev"]);
+	// cli.create_configuration()/\
 	let runner = cli.create_runner(&cli.run.base)?;
-	runner.async_run(|config| {
+	runner.async_run(|mut config| {
+		// dbg!(&config.telemetry_endpoints);
+		dbg!(&config.telemetry_external_transport);
+		config.telemetry_endpoints = None;
 		collator::start_collator(
 			context,
 			id,
