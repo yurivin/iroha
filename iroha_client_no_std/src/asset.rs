@@ -1,17 +1,15 @@
 //! This module contains `Asset` structure and it's implementation.
 
+use crate::alloc::string::ToString;
 use crate::permission::{Permission, Permissions};
 use crate::prelude::*;
+use alloc::vec::Vec;
 use alloc::{collections::BTreeMap, string::String};
 use core::{
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
 use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    vec::Vec,
-};
-use crate::alloc::string::ToString;
 /// Asset entity represents some sort of commodity or value.
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct AssetDefinition {
@@ -178,7 +176,7 @@ impl Identifiable for Asset {
 /// and the `From/Into` implementations to convert `AssetInstruction` variants into generic ISI.
 pub mod isi {
     use super::*;
-    use iroha_derive::*;
+    // use iroha_derive::*;
 
     /// Enumeration of all legal Asset related Instructions.
     #[derive(Clone, Debug, Encode, Decode)]
@@ -203,7 +201,7 @@ pub mod query {
     use super::*;
     use crate::query::IrohaQuery;
     use chrono::Utc;
-    use iroha_derive::{IntoQuery, Io};
+    // use iroha_derive::{IntoQuery, Io};
     use parity_scale_codec::{Decode, Encode};
 
     /// To get the state of all assets in an account (a balance),
@@ -225,7 +223,7 @@ pub mod query {
         pub fn build_request(account_id: <Account as Identifiable>::Id) -> QueryRequest {
             let query = GetAccountAssets { account_id };
             QueryRequest {
-                timestamp: Utc::now().timestamp_millis().to_string(),
+                timestamp: 0.to_string(), // Utc::now().timestamp_millis().to_string(),
                 signature: Option::None,
                 query: IrohaQuery::GetAccountAssets(query),
             }

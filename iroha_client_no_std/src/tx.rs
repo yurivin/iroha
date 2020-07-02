@@ -2,15 +2,13 @@
 //!
 //! `RequestedTransaction` is the start of the Transaction lifecycle.
 
+use crate::crypto::{Hash, KeyPair, Signature};
 use crate::prelude::*;
 use chrono::Utc;
-use crate::crypto::{Hash, KeyPair, Signature};
-use iroha_derive::Io;
+// use iroha_derive::Io;
+use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    string::String,
-    vec::Vec,
-};
+
 /// This structure represents transaction in non-trusted form.
 ///
 /// `Iroha` and its' clients use `RequestedTransaction` to send transactions via network.
@@ -18,12 +16,12 @@ use alloc::{
 /// `accept`.
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct RequestedTransaction {
-    payload: Payload,
-    signatures: Vec<Signature>,
+    pub payload: Payload,
+    pub signatures: Vec<Signature>,
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
-struct Payload {
+pub struct Payload {
     /// Account ID of transaction creator.
     account_id: <Account as Identifiable>::Id,
     /// An ordered set of instructions.
@@ -45,28 +43,28 @@ impl RequestedTransaction {
             payload: Payload {
                 instructions,
                 account_id,
-                creation_time: Utc::now().timestamp_millis() as u64,
+                creation_time: 0, // Utc::now().timestamp_millis() as u64,
                 time_to_live_ms: proposed_ttl_ms,
             },
             signatures: Vec::new(),
         }
     }
 
-    /// Transaction acceptance will check that transaction signatures are valid and move state one
-    /// step forward.
-    ///
-    /// Returns `Ok(AcceptedTransaction)` if succeeded and `Err(String)` if failed.
-    pub fn accept(self) -> Result<AcceptedTransaction, String> {
-        for signature in &self.signatures {
-            if let Err(e) = signature.verify(&self.payload.encode()) {
-                return Err(format!("Failed to verify signatures: {}", e));
-            }
-        }
-        Ok(AcceptedTransaction {
-            payload: self.payload,
-            signatures: self.signatures,
-        })
-    }
+    // /// Transaction acceptance will check that transaction signatures are valid and move state one
+    // /// step forward.
+    // ///
+    // /// Returns `Ok(AcceptedTransaction)` if succeeded and `Err(String)` if failed.
+    // pub fn accept(self) -> Result<AcceptedTransaction, String> {
+    //     for signature in &self.signatures {
+    //         if let Err(e) = signature.verify(&self.payload.encode()) {
+    //             return Err(format!("Failed to verify signatures: {}", e));
+    //         }
+    //     }
+    //     Ok(AcceptedTransaction {
+    //         payload: self.payload,
+    //         signatures: self.signatures,
+    //     })
+    // }
 }
 
 /// An ordered set of instructions, which is applied to the ledger atomically.
@@ -82,33 +80,33 @@ pub struct AcceptedTransaction {
 }
 
 impl AcceptedTransaction {
-    /// Sign transaction with the provided key pair.
-    ///
-    /// Returns `Ok(SignedTransaction)` if succeeded and `Err(String)` if failed.
-    pub fn sign(self, key_pair: &KeyPair) -> Result<SignedTransaction, String> {
-        let mut signatures = self.signatures.clone();
-        signatures.push(Signature::new(key_pair.clone(), &self.payload.encode())?);
-        Ok(SignedTransaction {
-            payload: self.payload,
-            signatures,
-        })
-    }
+    // /// Sign transaction with the provided key pair.
+    // ///
+    // /// Returns `Ok(SignedTransaction)` if succeeded and `Err(String)` if failed.
+    // pub fn sign(self, key_pair: &KeyPair) -> Result<SignedTransaction, String> {
+    //     let mut signatures = self.signatures.clone();
+    //     signatures.push(Signature::new(key_pair.clone(), &self.payload.encode())?);
+    //     Ok(SignedTransaction {
+    //         payload: self.payload,
+    //         signatures,
+    //     })
+    // }
 
-    /// Calculate transaction `Hash`.
-    pub fn hash(&self) -> Hash {
-        use ursa::blake2::{
-            digest::{Input, VariableOutput},
-            VarBlake2b,
-        };
-        let bytes: Vec<u8> = self.payload.clone().encode();
-        let vec_hash = VarBlake2b::new(32)
-            .expect("Failed to initialize variable size hash")
-            .chain(bytes)
-            .vec_result();
-        let mut hash = [0; 32];
-        hash.copy_from_slice(&vec_hash);
-        hash
-    }
+    // /// Calculate transaction `Hash`.
+    // pub fn hash(&self) -> Hash {
+    //     use ursa::blake2::{
+    //         digest::{Input, VariableOutput},
+    //         VarBlake2b,
+    //     };
+    //     let bytes: Vec<u8> = self.payload.clone().encode();
+    //     let vec_hash = VarBlake2b::new(32)
+    //         .expect("Failed to initialize variable size hash")
+    //         .chain(bytes)
+    //         .vec_result();
+    //     let mut hash = [0; 32];
+    //     hash.copy_from_slice(&vec_hash);
+    //     hash
+    // }
 }
 
 /// `SignedTransaction` represents transaction with signatures accumulated from Peer/Peers.
@@ -130,22 +128,22 @@ impl SignedTransaction {
         })
     }
 
-    /// Calculate transaction `Hash`.
-    pub fn hash(&self) -> Hash {
-        use ursa::blake2::{
-            digest::{Input, VariableOutput},
-            VarBlake2b,
-        };
-        let bytes: Vec<u8> = self.encode();
-        // let bytes: Vec<u8> = self.into();
-        let vec_hash = VarBlake2b::new(32)
-            .expect("Failed to initialize variable size hash")
-            .chain(bytes)
-            .vec_result();
-        let mut hash = [0; 32];
-        hash.copy_from_slice(&vec_hash);
-        hash
-    }
+    // /// Calculate transaction `Hash`.
+    // pub fn hash(&self) -> Hash {
+    //     use ursa::blake2::{
+    //         digest::{Input, VariableOutput},
+    //         VarBlake2b,
+    //     };
+    //     let bytes: Vec<u8> = self.encode();
+    //     // let bytes: Vec<u8> = self.into();
+    //     let vec_hash = VarBlake2b::new(32)
+    //         .expect("Failed to initialize variable size hash")
+    //         .chain(bytes)
+    //         .vec_result();
+    //     let mut hash = [0; 32];
+    //     hash.copy_from_slice(&vec_hash);
+    //     hash
+    // }
 }
 
 impl From<&SignedTransaction> for RequestedTransaction {

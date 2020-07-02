@@ -12,6 +12,7 @@ keywords = ["crypto", "blockchain", "ledger"]
 categories = ["cryptography::cryptocurrencies"]
 
 [features]
+std = []
 bridge = []
 dex = []
 network-mock = ["iroha_network/mock"]
@@ -38,6 +39,9 @@ ursa = { git="https://github.com/hyperledger/ursa.git", branch="master", default
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 heim = "0.0.10"
+warp = "0.2.3"
+tokio = { version="0.2.21", features = ["full"] }
+bytes = "0.5.5"
 log = { version = "0.4", features = ["std", "serde"] }
 
 [dev-dependencies]

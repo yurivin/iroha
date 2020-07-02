@@ -1,13 +1,14 @@
 //! This module contains `Account` structure and it's implementation.
 
+use crate::alloc::string::ToString;
+use crate::crypto::PublicKey;
 use crate::prelude::*;
+use alloc::vec::Vec;
 use alloc::{collections::BTreeMap, string::String};
 use core::fmt::{self, Display};
 use core::hash::Hash;
-use alloc::vec::Vec;
-use crate::crypto::PublicKey;
 use parity_scale_codec::{Decode, Encode};
-use crate::alloc::string::ToString;
+
 /// Account entity is an authority which is used to execute `Iroha Special Insturctions`.
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Account {
@@ -99,7 +100,7 @@ impl Identifiable for Account {
 /// and the `From/Into` implementations to convert `AccountInstruction` variants into generic ISI.
 pub mod isi {
     use super::*;
-    use iroha_derive::*;
+    // use iroha_derive::*;
 
     /// Enumeration of all legal Account related Instructions.
     #[derive(Clone, Debug, Encode, Decode)]
@@ -122,7 +123,7 @@ pub mod query {
     use super::*;
     use crate::query::IrohaQuery;
     use chrono::Utc;
-    use iroha_derive::*;
+    // use iroha_derive::*;
     use parity_scale_codec::{Decode, Encode};
 
     /// Get information related to the account with a specified `account_id`.
@@ -144,7 +145,7 @@ pub mod query {
         pub fn build_request(account_id: <Account as Identifiable>::Id) -> QueryRequest {
             let query = GetAccount { account_id };
             QueryRequest {
-                timestamp: Utc::now().naive_local().timestamp_millis().to_string(),
+                timestamp: 0.to_string(), //Utc::now().naive_local().timestamp_millis().to_string(),
                 signature: Option::None,
                 query: IrohaQuery::GetAccount(query),
             }

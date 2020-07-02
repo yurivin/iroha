@@ -2,13 +2,10 @@
 //! and related implementations.
 
 use super::query::IrohaQuery;
-use iroha_derive::Io;
-use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    vec::Vec,
-    string::String,
-};
+// use iroha_derive::Io;
 use alloc::boxed::Box;
+use alloc::{string::String, vec::Vec};
+use parity_scale_codec::{Decode, Encode};
 pub mod prelude {
     //! Re-exports important traits and types. Meant to be glob imported when using `Iroha`.
     pub use crate::{account::isi::*, asset::isi::*, domain::isi::*, isi::*, peer::isi::*};

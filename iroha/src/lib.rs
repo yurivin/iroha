@@ -111,6 +111,8 @@ impl Iroha {
             account_id: account_id.clone(),
         };
         let asset = Asset::with_permission(asset_id.clone(), Permission::Anything);
+        println!("PK: {:?}", config.public_key);
+        println!("SK: {:?}", config.private_key);
         let mut account =
             Account::with_signatory(&account_id.name, &account_id.domain_name, config.public_key);
         account.assets.insert(asset_id, asset);

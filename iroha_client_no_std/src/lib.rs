@@ -4,10 +4,10 @@
 extern crate alloc;
 
 pub mod client;
-pub mod config;
+// pub mod config;
 pub mod crypto;
-pub mod torii;
 pub mod maintenance;
+pub mod torii;
 // TODO(vmarkushin): update documentation for the client-side entities (IR-848).
 pub mod account;
 pub mod asset;
