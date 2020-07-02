@@ -7,9 +7,9 @@
 /// and the `From/Into` implementations to convert `EventInstruction` variants into generic ISI.
 pub mod isi {
     use crate::prelude::*;
-    use iroha_derive::*;
-    use parity_scale_codec::{Decode, Encode};
+    // use iroha_derive::*;
     use alloc::boxed::Box;
+    use parity_scale_codec::{Decode, Encode};
 
     type Trigger = IrohaQuery;
 

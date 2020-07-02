@@ -1,25 +1,24 @@
 //! This module contains structures and implementations related to the cryptographic parts of the
 //! Iroha.
-use parity_scale_codec::{Decode, Encode};
-use serde::Deserialize;
-use alloc::    collections::BTreeMap;
-use alloc::{
-    vec::Vec,
-    string::String,
-};
 use crate::alloc::string::ToString;
+use alloc::collections::BTreeMap;
+use alloc::{string::String, vec::Vec};
 use core::{
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Formatter},
 };
-use ursa::{
-    blake2::{
-        digest::{Input, VariableOutput},
-        VarBlake2b,
-    },
-    keys::{PrivateKey as UrsaPrivateKey, PublicKey as UrsaPublicKey},
-    signatures::{ed25519::Ed25519Sha512, SignatureScheme, Signer},
-};
+use parity_scale_codec::{Decode, Encode};
+use serde::Deserialize;
+// use ursa::{
+//     blake2::{
+//         digest::{Input, VariableOutput},
+//         VarBlake2b,
+//     },
+//     keys::{PrivateKey as UrsaPrivateKey, PublicKey as UrsaPublicKey},
+//     signatures::{ed25519::Ed25519Sha512, SignatureScheme, Signer},
+// };
+// use sp_core::sr25519::Public;
+// use sp_core::hash::H256;
 
 /// Represents hash of Iroha entities like `Block` or `Transaction.
 pub type Hash = [u8; 32];
@@ -81,42 +80,42 @@ impl TryFrom<Vec<u8>> for PrivateKey {
     }
 }
 
-type Ed25519Signature = [u8; 64];
+pub type Ed25519Signature = [u8; 64];
 
-impl KeyPair {
-    /// Generates a pair of Public and Private key.
-    /// Returns `Err(String)` with error message if failed.
-    pub fn generate() -> Result<Self, String> {
-        let (public_key, ursa_private_key) = Ed25519Sha512
-            .keypair(Option::None)
-            .map_err(|e| format!("Failed to generate Ed25519Sha512 key pair: {}", e))?;
-        let public_key: [u8; 32] = public_key[..]
-            .try_into()
-            .map_err(|e| format!("Public key should be [u8;32]: {}", e))?;
-        let mut private_key = [0; 64];
-        private_key.copy_from_slice(ursa_private_key.as_ref());
-        Ok(KeyPair {
-            public_key: PublicKey { inner: public_key },
-            private_key: PrivateKey::try_from(private_key.to_vec()).map_err(|e| {
-                format!(
-                    "Failed to convert Ursa Private key to Iroha Private Key: {}",
-                    e
-                )
-            })?,
-        })
-    }
-}
+// impl KeyPair {
+//     /// Generates a pair of Public and Private key.
+//     /// Returns `Err(String)` with error message if failed.
+//     pub fn generate() -> Result<Self, String> {
+//         let (public_key, ursa_private_key) = Ed25519Sha512
+//             .keypair(Option::None)
+//             .map_err(|e| format!("Failed to generate Ed25519Sha512 key pair: {}", e))?;
+//         let public_key: [u8; 32] = public_key[..]
+//             .try_into()
+//             .map_err(|e| format!("Public key should be [u8;32]: {}", e))?;
+//         let mut private_key = [0; 64];
+//         private_key.copy_from_slice(ursa_private_key.as_ref());
+//         Ok(KeyPair {
+//             public_key: PublicKey { inner: public_key },
+//             private_key: PrivateKey::try_from(private_key.to_vec()).map_err(|e| {
+//                 format!(
+//                     "Failed to convert Ursa Private key to Iroha Private Key: {}",
+//                     e
+//                 )
+//             })?,
+//         })
+//     }
+// }
 
-/// Calculates hash of the given bytes.
-pub fn hash(bytes: Vec<u8>) -> Hash {
-    let vec_hash = VarBlake2b::new(32)
-        .expect("Failed to initialize variable size hash")
-        .chain(bytes)
-        .vec_result();
-    let mut hash = [0; 32];
-    hash.copy_from_slice(&vec_hash);
-    hash
-}
+// /// Calculates hash of the given bytes.
+// pub fn hash(bytes: Vec<u8>) -> Hash {
+//     let vec_hash = VarBlake2b::new(32)
+//         .expect("Failed to initialize variable size hash")
+//         .chain(bytes)
+//         .vec_result();
+//     let mut hash = [0; 32];
+//     hash.copy_from_slice(&vec_hash);
+//     hash
+// }
 
 /// Represents signature of the data (`Block` or `Transaction` for example).
 #[derive(Clone, Encode, Decode)]
@@ -125,36 +124,36 @@ pub struct Signature {
     /// public-key of an approved authority.
     pub public_key: PublicKey,
     /// Ed25519 signature is placed here.
-    signature: Ed25519Signature,
+    pub signature: Ed25519Signature,
 }
 
-impl Signature {
-    /// Creates new `Signature` by signing payload via `private_key`.
-    pub fn new(key_pair: KeyPair, payload: &[u8]) -> Result<Signature, String> {
-        let private_key = UrsaPrivateKey(key_pair.private_key.inner.to_vec());
-        let transaction_signature = Signer::new(&Ed25519Sha512, &private_key)
-            .sign(payload)
-            .map_err(|e| format!("Failed to sign payload: {}", e))?;
-        let mut signature = [0; 64];
-        signature.copy_from_slice(&transaction_signature);
-        Ok(Signature {
-            public_key: key_pair.public_key,
-            signature,
-        })
-    }
-
-    /// Verify `message` using signed data and `public_key`.
-    pub fn verify(&self, message: &[u8]) -> Result<(), String> {
-        Ed25519Sha512::new()
-            .verify(
-                message,
-                &self.signature,
-                &UrsaPublicKey(self.public_key.inner.to_vec()),
-            )
-            .map_err(|e| e.to_string())
-            .map(|_| ())
-    }
-}
+// impl Signature {
+//     /// Creates new `Signature` by signing payload via `private_key`.
+//     pub fn new(key_pair: KeyPair, payload: &[u8]) -> Result<Signature, String> {
+//         let private_key = UrsaPrivateKey(key_pair.private_key.inner.to_vec());
+//         let transaction_signature = Signer::new(&Ed25519Sha512, &private_key)
+//             .sign(payload)
+//             .map_err(|e| format!("Failed to sign payload: {}", e))?;
+//         let mut signature = [0; 64];
+//         signature.copy_from_slice(&transaction_signature);
+//         Ok(Signature {
+//             public_key: key_pair.public_key,
+//             signature,
+//         })
+//     }
+//
+//     /// Verify `message` using signed data and `public_key`.
+//     pub fn verify(&self, message: &[u8]) -> Result<(), String> {
+//         Ed25519Sha512::new()
+//             .verify(
+//                 message,
+//                 &self.signature,
+//                 &UrsaPublicKey(self.public_key.inner.to_vec()),
+//             )
+//             .map_err(|e| e.to_string())
+//             .map(|_| ())
+//     }
+// }
 
 impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
@@ -202,15 +201,15 @@ impl Signatures {
         self.signatures.clear()
     }
 
-    /// Returns signatures that have passed verification.
-    pub fn verified(&self, payload: &[u8]) -> Vec<Signature> {
-        self.signatures
-            .iter()
-            .filter(|&(_, signature)| signature.verify(payload).is_ok())
-            .map(|(_, signature)| signature)
-            .cloned()
-            .collect()
-    }
+    // /// Returns signatures that have passed verification.
+    // pub fn verified(&self, payload: &[u8]) -> Vec<Signature> {
+    //     self.signatures
+    //         .iter()
+    //         .filter(|&(_, signature)| signature.verify(payload).is_ok())
+    //         .map(|(_, signature)| signature)
+    //         .cloned()
+    //         .collect()
+    // }
 
     /// Returns all signatures.
     pub fn values(&self) -> Vec<Signature> {

@@ -1,12 +1,9 @@
 //! `Maintenance` module provides structures and implementation blocks related to `Iroha`
 //! maintenance functions like Healthcheck, Monitoring, etc.
 
-use iroha_derive::Io;
+// use iroha_derive::Io;
+use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    vec::Vec,
-    string::String,
-};
 /// `Health` enumerates different variants of Iroha `Peer` states.
 /// Each variant can provide additional information if needed.
 #[derive(Clone, Debug, Encode, Decode)]
@@ -27,11 +24,9 @@ pub struct Metrics {
 }
 
 mod disk {
-    use iroha_derive::Io;
+    // use iroha_derive::Io;
+    use alloc::string::String;
     use parity_scale_codec::{Decode, Encode};
-    use alloc::{
-        string::String,
-    };
     #[derive(Clone, Debug, Default, Encode, Decode)]
     // #[derive(Clone, Debug, Default, Encode, Decode)]
     pub struct Disk {
@@ -41,11 +36,9 @@ mod disk {
 }
 
 mod cpu {
-    use iroha_derive::Io;
+    // use iroha_derive::Io;
+    use alloc::string::String;
     use parity_scale_codec::{Decode, Encode};
-    use alloc::{
-        string::String,
-    };
     #[derive(Clone, Debug, Default, Encode, Decode)]
     pub struct Cpu {
         load: Load,
@@ -60,11 +53,9 @@ mod cpu {
 }
 
 mod memory {
-    use iroha_derive::Io;
+    // use iroha_derive::Io;
+    use alloc::string::String;
     use parity_scale_codec::{Decode, Encode};
-    use alloc::{
-        string::String,
-    };
     #[derive(Clone, Debug, Default, Encode, Decode)]
     pub struct Memory {
         memory: String,

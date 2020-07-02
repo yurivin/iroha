@@ -1,9 +1,6 @@
 use crate::prelude::*;
+use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    string::String,
-    vec::Vec,
-};
 pub fn permission_asset_definition_id() -> AssetDefinitionId {
     AssetDefinitionId::new("permissions", "global")
 }
@@ -56,7 +53,7 @@ impl Permissions {
 
 pub mod isi {
     use super::*;
-    use iroha_derive::Io;
+    // use iroha_derive::Io;
     use parity_scale_codec::{Decode, Encode};
 
     /// Iroha special instructions related to `Permission`.

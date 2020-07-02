@@ -1,13 +1,10 @@
 //! This module contains query related Iroha functionality.
 
-use crate::{account, asset};
 use crate::crypto::Signature;
-use iroha_derive::Io;
+use crate::{account, asset};
+// use iroha_derive::Io;
+use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
-use alloc::{
-    string::String,
-    vec::Vec,
-};
 /// I/O ready structure to send queries.
 #[derive(Debug, Encode, Decode)]
 pub struct QueryRequest {

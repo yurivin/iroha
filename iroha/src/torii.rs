@@ -19,6 +19,7 @@ use iroha_network::mock::prelude::*;
 #[cfg(not(feature = "mock"))]
 use iroha_network::prelude::*;
 use std::{convert::TryFrom, fmt::Debug, sync::Arc};
+use std::future::Future;
 
 /// Main network handler and the only entrypoint of the Iroha.
 pub struct Torii {
@@ -78,6 +79,52 @@ impl Torii {
         )
     }
 
+    async fn http_listen(
+        state: State<ToriiState>,
+        // mut handler: H,
+    ) -> Result<(), String>
+        // where
+        //     H: FnMut(State<S>, Request) -> F,
+        //     F: Future<Output = Result<Response, String>>,
+    {
+        use warp::Filter;
+        use bytes::Bytes;
+        // type Bytes = Vec<u8>;
+        let route = warp::post()
+            .and(warp::path("instruction"))
+            .and(warp::body::bytes())
+            .map(move |bytes: Bytes| {
+                println!("rcvd: {:?}", bytes);
+                let request = Request::new("/instruction".into(), bytes.to_vec());
+                let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
+                if let Response::Ok(data) = resp {
+                    data
+                } else {
+                    vec![]
+                }
+            });
+        warp::serve(route)
+            .run(([127, 0, 0, 1], 7878))
+            .await;
+
+        // use simple_server::{Server, Method, StatusCode};
+        // let server = Server::new(move |request, mut response| {
+        //     match (request.method(), request.uri().path()) {
+        //         (&Method::POST, "/instruction") => {
+        //
+        //         }
+        //         (_, _) => {
+        //             response.status(StatusCode::NOT_FOUND);
+        //             Ok(response.body("Not found".as_bytes().to_vec())?)
+        //         }
+        //     }
+        // });
+        // let host = "127.0.0.1";
+        // let port = "7878";
+        // server.listen(host, port);
+        Ok(())
+    }
+
     /// To handle incoming requests `Torii` should be started first.
     pub async fn start(&mut self) -> Result<(), String> {
         let world_state_view = Arc::clone(&self.world_state_view);
@@ -96,13 +143,14 @@ impl Torii {
             events_sender: self.events_sender.clone(),
         };
         let state = Arc::new(RwLock::new(state));
-        let (handle_requests_result, handle_connects_result, _event_consumer_result) = futures::join!(
-            Network::listen(state.clone(), &self.url, handle_requests),
-            Network::listen(state.clone(), &self.connect_url, handle_connections),
-            consume_events(self.events_receiver.clone(), connections)
-        );
-        handle_requests_result?;
-        handle_connects_result?;
+        // let (handle_requests_result, handle_connects_result, _event_consumer_result) = futures::join!(
+        //     Network::listen(state.clone(), &self.url, handle_requests),
+        //     Network::listen(state.clone(), &self.connect_url, handle_connections),
+        //     consume_events(self.events_receiver.clone(), connections)
+        // );
+        // handle_requests_result?;
+        // handle_connects_result?;
+        tokio::runtime::Runtime::new().unwrap().block_on(Self::http_listen(state.clone())).unwrap();
         Ok(())
     }
 }

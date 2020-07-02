@@ -1,5 +1,7 @@
 //! This module contains `Peer` structure and related implementations.
 
+use crate::alloc::string::ToString;
+use crate::crypto::PublicKey;
 use crate::{
     account::{Account, Id as AccountId},
     domain::*,
@@ -11,9 +13,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use crate::alloc::string::ToString;
-use crate::crypto::PublicKey;
-use iroha_derive::*;
+// use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
 use serde::Deserialize;
 /// Peer's identification.
@@ -133,10 +133,7 @@ impl Identifiable for Peer {
 /// and the `From/Into` implementations to convert `PeerInstruction` variants into generic ISI.
 pub mod isi {
     use super::*;
-    use alloc::{
-        boxed::Box,
-        string::String,
-    };
+    use alloc::{boxed::Box, string::String};
 
     /// Enumeration of all legal Peer related Instructions.
     #[derive(Clone, Debug, Encode, Decode)]
