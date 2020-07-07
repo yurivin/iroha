@@ -291,4 +291,8 @@ pub mod prelude {
     #[doc(inline)]
     #[cfg(feature = "bridge")]
     pub use crate::bridge::{Bridge, BridgeDefinition, BridgeDefinitionId, BridgeId, BridgeKind};
+
+    #[doc(inline)]
+    #[cfg(feature = "dex")]
+    pub use crate::dex::DEXDefinition;
 }
