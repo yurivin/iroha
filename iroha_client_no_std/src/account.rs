@@ -1,13 +1,13 @@
 //! This module contains `Account` structure and it's implementation.
 
 use crate::prelude::*;
-use iroha::crypto::PublicKey;
+use alloc::{collections::BTreeMap, string::String};
+use core::fmt::{self, Display};
+use core::hash::Hash;
+use alloc::vec::Vec;
+use crate::crypto::PublicKey;
 use parity_scale_codec::{Decode, Encode};
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Display},
-};
-
+use crate::alloc::string::ToString;
 /// Account entity is an authority which is used to execute `Iroha Special Insturctions`.
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Account {
@@ -55,7 +55,7 @@ impl Account {
 ///
 /// let id = Id::new("user", "company");
 /// ```
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, std::hash::Hash, Encode, Decode)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Encode, Decode)]
 pub struct Id {
     /// Account's name.
     pub name: String,
@@ -102,7 +102,7 @@ pub mod isi {
     use iroha_derive::*;
 
     /// Enumeration of all legal Account related Instructions.
-    #[derive(Clone, Debug, Io, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub enum AccountInstruction {
         /// Variant of the generic `Transfer` instruction for `Account` --`Asset`--> `Account`.
         TransferAsset(
@@ -121,12 +121,12 @@ pub mod isi {
 pub mod query {
     use super::*;
     use crate::query::IrohaQuery;
+    use chrono::Utc;
     use iroha_derive::*;
     use parity_scale_codec::{Decode, Encode};
-    use std::time::SystemTime;
 
     /// Get information related to the account with a specified `account_id`.
-    #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub struct GetAccount {
         /// Identification of an account to find information about.
         pub account_id: <Account as Identifiable>::Id,
@@ -144,13 +144,9 @@ pub mod query {
         pub fn build_request(account_id: <Account as Identifiable>::Id) -> QueryRequest {
             let query = GetAccount { account_id };
             QueryRequest {
-                timestamp: SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Failed to get System Time.")
-                    .as_millis()
-                    .to_string(),
+                timestamp: Utc::now().naive_local().timestamp_millis().to_string(),
                 signature: Option::None,
-                query: query.into(),
+                query: IrohaQuery::GetAccount(query),
             }
         }
     }

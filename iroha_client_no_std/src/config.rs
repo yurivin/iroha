@@ -1,7 +1,13 @@
-use iroha::{config::Configuration as IrohaConfiguration, crypto::PublicKey};
+use crate::{crypto::PublicKey};
 use iroha_logger::config::LoggerConfiguration;
 use serde::Deserialize;
-use std::{env, fmt::Debug, fs::File, io::BufReader, path::Path};
+use core::fmt::Debug;
+// use core::{env, fmt::Debug, fs::File, io::BufReader, path::Path};
+use alloc::{
+    string::String,
+    vec::Vec,
+};
+use crate::alloc::string::ToString;
 
 const TORII_URL: &str = "TORII_URL";
 const TORII_CONNECT_URL: &str = "TORII_CONNECT_URL";
@@ -31,6 +37,7 @@ pub struct Configuration {
 }
 
 impl Configuration {
+    /*
     /// This method will build `Configuration` from a json *pretty* formatted file (without `:` in
     /// key names).
     /// # Panics
@@ -78,6 +85,7 @@ impl Configuration {
         }
         Ok(())
     }
+     */
 }
 
 fn default_torii_url() -> String {

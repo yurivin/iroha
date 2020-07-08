@@ -1,5 +1,13 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate alloc;
+
 pub mod client;
 pub mod config;
+pub mod crypto;
+pub mod torii;
+pub mod maintenance;
 // TODO(vmarkushin): update documentation for the client-side entities (IR-848).
 pub mod account;
 pub mod asset;

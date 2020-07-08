@@ -9,13 +9,14 @@ pub mod isi {
     use crate::prelude::*;
     use iroha_derive::*;
     use parity_scale_codec::{Decode, Encode};
+    use alloc::boxed::Box;
 
     type Trigger = IrohaQuery;
 
     /// Instructions related to different type of Iroha events.
     /// Some of them are time based triggers, another watch the Blockchain and others
     /// check the World State View.
-    #[derive(Clone, Debug, Io, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub enum EventInstruction {
         /// This variant of Iroha Special Instruction will execute instruction when new Block
         /// will be created.
