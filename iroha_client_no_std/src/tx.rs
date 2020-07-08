@@ -3,23 +3,26 @@
 //! `RequestedTransaction` is the start of the Transaction lifecycle.
 
 use crate::prelude::*;
-use iroha::crypto::{Hash, KeyPair, Signature};
+use chrono::Utc;
+use crate::crypto::{Hash, KeyPair, Signature};
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
-use std::time::SystemTime;
-
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 /// This structure represents transaction in non-trusted form.
 ///
 /// `Iroha` and its' clients use `RequestedTransaction` to send transactions via network.
 /// Direct usage in business logic is strongly prohibited. Before any interactions
 /// `accept`.
-#[derive(Clone, Debug, Io, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct RequestedTransaction {
     payload: Payload,
     signatures: Vec<Signature>,
 }
 
-#[derive(Clone, Debug, Io, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 struct Payload {
     /// Account ID of transaction creator.
     account_id: <Account as Identifiable>::Id,
@@ -42,10 +45,7 @@ impl RequestedTransaction {
             payload: Payload {
                 instructions,
                 account_id,
-                creation_time: SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Failed to get System Time.")
-                    .as_millis() as u64,
+                creation_time: Utc::now().timestamp_millis() as u64,
                 time_to_live_ms: proposed_ttl_ms,
             },
             signatures: Vec::new(),
@@ -58,7 +58,7 @@ impl RequestedTransaction {
     /// Returns `Ok(AcceptedTransaction)` if succeeded and `Err(String)` if failed.
     pub fn accept(self) -> Result<AcceptedTransaction, String> {
         for signature in &self.signatures {
-            if let Err(e) = signature.verify(&Vec::from(&self.payload)) {
+            if let Err(e) = signature.verify(&self.payload.encode()) {
                 return Err(format!("Failed to verify signatures: {}", e));
             }
         }
@@ -75,7 +75,7 @@ impl RequestedTransaction {
 /// go through several steps before will be added to the blockchain and stored.
 /// Starting in form of `RequestedTransaction` transaction it changes state based on interactions
 /// with `Iroha` subsystems.
-#[derive(Clone, Debug, Io, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct AcceptedTransaction {
     payload: Payload,
     signatures: Vec<Signature>,
@@ -87,7 +87,7 @@ impl AcceptedTransaction {
     /// Returns `Ok(SignedTransaction)` if succeeded and `Err(String)` if failed.
     pub fn sign(self, key_pair: &KeyPair) -> Result<SignedTransaction, String> {
         let mut signatures = self.signatures.clone();
-        signatures.push(Signature::new(key_pair.clone(), &Vec::from(&self.payload))?);
+        signatures.push(Signature::new(key_pair.clone(), &self.payload.encode())?);
         Ok(SignedTransaction {
             payload: self.payload,
             signatures,
@@ -100,7 +100,7 @@ impl AcceptedTransaction {
             digest::{Input, VariableOutput},
             VarBlake2b,
         };
-        let bytes: Vec<u8> = self.payload.clone().into();
+        let bytes: Vec<u8> = self.payload.clone().encode();
         let vec_hash = VarBlake2b::new(32)
             .expect("Failed to initialize variable size hash")
             .chain(bytes)
@@ -112,7 +112,7 @@ impl AcceptedTransaction {
 }
 
 /// `SignedTransaction` represents transaction with signatures accumulated from Peer/Peers.
-#[derive(Clone, Debug, Io, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct SignedTransaction {
     payload: Payload,
     signatures: Vec<Signature>,
@@ -136,7 +136,8 @@ impl SignedTransaction {
             digest::{Input, VariableOutput},
             VarBlake2b,
         };
-        let bytes: Vec<u8> = self.into();
+        let bytes: Vec<u8> = self.encode();
+        // let bytes: Vec<u8> = self.into();
         let vec_hash = VarBlake2b::new(32)
             .expect("Failed to initialize variable size hash")
             .chain(bytes)

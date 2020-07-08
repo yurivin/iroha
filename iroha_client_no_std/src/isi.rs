@@ -4,14 +4,18 @@
 use super::query::IrohaQuery;
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
-
+use alloc::{
+    vec::Vec,
+    string::String,
+};
+use alloc::boxed::Box;
 pub mod prelude {
     //! Re-exports important traits and types. Meant to be glob imported when using `Iroha`.
     pub use crate::{account::isi::*, asset::isi::*, domain::isi::*, isi::*, peer::isi::*};
 }
 
 /// Enumeration of all legal Iroha Special Instructions.
-#[derive(Clone, Debug, Io, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 #[allow(clippy::large_enum_variant)]
 pub enum Instruction {
     /// Variant of instructions related to `Peer`.

@@ -1,6 +1,9 @@
 use crate::prelude::*;
 use parity_scale_codec::{Decode, Encode};
-
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 pub fn permission_asset_definition_id() -> AssetDefinitionId {
     AssetDefinitionId::new("permissions", "global")
 }
@@ -57,7 +60,7 @@ pub mod isi {
     use parity_scale_codec::{Decode, Encode};
 
     /// Iroha special instructions related to `Permission`.
-    #[derive(Clone, Debug, Io, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub enum PermissionInstruction {
         CanAnything(<Account as Identifiable>::Id),
         CanAddListener(<Account as Identifiable>::Id),

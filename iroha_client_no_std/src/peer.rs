@@ -6,15 +6,19 @@ use crate::{
     isi::*,
     Identifiable,
 };
-use iroha::crypto::PublicKey;
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
+use crate::alloc::string::ToString;
+use crate::crypto::PublicKey;
 use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
-
 /// Peer's identification.
 #[derive(
-    Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Io, Default, Deserialize,
+    Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Default, Deserialize,
 )]
 pub struct PeerId {
     /// Address of the Peer's entrypoint.
@@ -34,7 +38,7 @@ impl PeerId {
 }
 
 /// Peer represents currently running Iroha instance.
-#[derive(Debug, Clone, Default, Encode, Decode, Io)]
+#[derive(Debug, Clone, Default, Encode, Decode)]
 pub struct Peer {
     /// Peer Identification.
     pub id: PeerId,
@@ -129,9 +133,13 @@ impl Identifiable for Peer {
 /// and the `From/Into` implementations to convert `PeerInstruction` variants into generic ISI.
 pub mod isi {
     use super::*;
+    use alloc::{
+        boxed::Box,
+        string::String,
+    };
 
     /// Enumeration of all legal Peer related Instructions.
-    #[derive(Clone, Debug, Io, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub enum PeerInstruction {
         /// Variant of the generic `Add` instruction for `Domain` --> `Peer`.
         AddDomain(String, PeerId),

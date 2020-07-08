@@ -1,12 +1,15 @@
 //! This module contains query related Iroha functionality.
 
 use crate::{account, asset};
-use iroha::crypto::Signature;
+use crate::crypto::Signature;
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
-
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 /// I/O ready structure to send queries.
-#[derive(Debug, Io, Encode, Decode)]
+#[derive(Debug, Encode, Decode)]
 pub struct QueryRequest {
     /// Timestamp of the query creation.
     pub timestamp: String,
@@ -26,7 +29,7 @@ pub enum IrohaQuery {
 }
 
 /// Result of queries execution.
-#[derive(Debug, Io, Encode, Decode)]
+#[derive(Debug, Encode, Decode)]
 pub enum QueryResult {
     /// Query all Assets related to the Account result.
     GetAccountAssets(asset::query::GetAccountAssetsResult),

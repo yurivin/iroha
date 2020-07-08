@@ -1,12 +1,19 @@
 use crate::config::Configuration;
 use crate::prelude::*;
-use iroha::{crypto::KeyPair, torii::uri};
+use crate::torii::uri;
+use crate::crypto::KeyPair;
 use iroha_derive::log;
 use iroha_network::{prelude::*, Network};
-use std::{
+use alloc::{
+    string::String,
+    vec::Vec,
+};
+use crate::alloc::string::ToString;
+use core::{
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
 };
+use parity_scale_codec::{Encode, Decode};
 
 pub struct Client {
     torii_url: String,
@@ -26,11 +33,13 @@ impl Client {
     }
 
     /// Instructions API entry point. Submits one Iroha Special Instruction to `Iroha` peers.
-    #[log]
+    // #[log]
     pub async fn submit(&mut self, instruction: Instruction) -> Result<(), String> {
         let network = Network::new(&self.torii_url);
+        let mut v = Vec::new();
+        v.push(instruction);
         let transaction: RequestedTransaction = RequestedTransaction::new(
-            vec![instruction],
+            v,
             crate::account::Id::new("root", "global"),
             self.proposed_transaction_ttl_ms,
         )
@@ -40,7 +49,7 @@ impl Client {
         if let Response::InternalError = network
             .send_request(Request::new(
                 uri::INSTRUCTIONS_URI.to_string(),
-                Vec::from(&transaction),
+                transaction.encode(),
             ))
             .await
             .map_err(|e| {
@@ -69,7 +78,7 @@ impl Client {
         if let Response::InternalError = network
             .send_request(Request::new(
                 uri::INSTRUCTIONS_URI.to_string(),
-                Vec::from(&transaction),
+                transaction.encode()
             ))
             .await
             .map_err(|e| {
@@ -85,16 +94,17 @@ impl Client {
     }
 
     /// Query API entry point. Requests queries from `Iroha` peers.
-    #[log]
+    // #[log]
     pub async fn request(&mut self, request: &QueryRequest) -> Result<QueryResult, String> {
         let network = Network::new(&self.torii_url);
         match network
-            .send_request(Request::new(uri::QUERY_URI.to_string(), request.into()))
+            .send_request(Request::new(uri::QUERY_URI.to_string(), request.encode()))
             .await
             .map_err(|e| format!("Failed to write a get request: {}", e))?
         {
             Response::Ok(payload) => Ok(
-                QueryResult::try_from(payload).expect("Failed to try Query Result from vector.")
+                QueryResult::decode(&mut payload.as_slice()).expect("Failed to try Query Result from vector.")
+                // QueryResult::try_from(payload).expect("Failed to try Query Result from vector.")
             ),
             Response::InternalError => Err("Server error.".to_string()),
         }

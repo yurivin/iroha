@@ -1,14 +1,15 @@
 //! This module contains `Domain` structure and related implementations.
 
 use crate::prelude::*;
+use alloc::{collections::BTreeMap, string::String};
 use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
-use std::collections::BTreeMap;
-
 type Name = String;
-
+use alloc::{
+    vec::Vec,
+};
 /// Named group of `Account` and `Asset` entities.
-#[derive(Debug, Clone, Io, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Domain {
     /// Domain name, for example company name.
     pub name: Name,
@@ -42,7 +43,7 @@ pub mod isi {
     use super::*;
 
     /// Enumeration of all legal Domain related Instructions.
-    #[derive(Clone, Debug, Io, Encode, Decode)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub enum DomainInstruction {
         /// Variant of the generic `Register` instruction for `Account` --> `Domain`.
         RegisterAccount(Name, Account),
