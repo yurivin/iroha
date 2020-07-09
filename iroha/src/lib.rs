@@ -118,6 +118,7 @@ impl Iroha {
             name: domain_name.clone(),
             accounts,
             asset_definitions,
+            ..Default::default()
         };
         let mut domains = BTreeMap::new();
         domains.insert(domain_name, domain);
@@ -294,5 +295,5 @@ pub mod prelude {
 
     #[doc(inline)]
     #[cfg(feature = "dex")]
-    pub use crate::dex::DEXDefinition;
+    pub use crate::dex::{DEXDefinition, DEX};
 }

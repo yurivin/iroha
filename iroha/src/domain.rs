@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 type Name = String;
 
 /// Named group of `Account` and `Asset` entities.
-#[derive(Debug, Clone, Io, Encode, Decode)]
+#[derive(Debug, Clone, Io, Encode, Decode, Default)]
 pub struct Domain {
     /// Domain name, for example company name.
     pub name: Name,
@@ -15,6 +15,8 @@ pub struct Domain {
     pub accounts: BTreeMap<<Account as Identifiable>::Id, Account>,
     /// Assets of the domain.
     pub asset_definitions: BTreeMap<<AssetDefinition as Identifiable>::Id, AssetDefinition>,
+    /// DEX of domain, must be initialized before use.
+    pub dex: Option<DEX>,
 }
 
 impl Domain {
@@ -26,6 +28,7 @@ impl Domain {
             name,
             accounts: BTreeMap::new(),
             asset_definitions: BTreeMap::new(),
+            dex: None,
         }
     }
 

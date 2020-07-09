@@ -201,6 +201,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -264,6 +265,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -326,6 +328,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -391,6 +394,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);

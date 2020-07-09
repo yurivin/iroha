@@ -379,6 +379,7 @@ pub mod isi {
                     name: domain_name.clone(),
                     accounts,
                     asset_definitions,
+                    ..Default::default()
                 };
                 let bridge_domain_name = "bridge".to_string();
                 let mut bridge_asset_definitions = BTreeMap::new();
@@ -399,6 +400,7 @@ pub mod isi {
                     name: bridge_domain_name.clone(),
                     accounts: BTreeMap::new(),
                     asset_definitions: bridge_asset_definitions,
+                    ..Default::default()
                 };
                 let mut domains = BTreeMap::new();
                 domains.insert(domain_name, domain);

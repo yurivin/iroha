@@ -16,6 +16,7 @@ pub enum Permission {
     Anything,
     AddDomain,
     AddListener,
+    ManageDEX,
     RegisterAssetDefinition(Option<<Domain as Identifiable>::Id>),
     RegisterAccount(Option<<Domain as Identifiable>::Id>),
     MintAsset(
@@ -71,6 +72,7 @@ pub mod isi {
         CanAnything(<Account as Identifiable>::Id),
         CanAddListener(<Account as Identifiable>::Id),
         CanAddDomain(<Account as Identifiable>::Id),
+        CanManageDEX(<Account as Identifiable>::Id),
         CanRegisterAccount(
             <Account as Identifiable>::Id,
             Option<<Domain as Identifiable>::Id>,
@@ -118,6 +120,7 @@ pub mod isi {
                 CanAnything(authority_account_id)
                 | CanAddDomain(authority_account_id)
                 | CanAddListener(authority_account_id)
+                | CanManageDEX(authority_account_id)
                 | CanRegisterAccount(authority_account_id, ..)
                 | CanRegisterAssetDefinition(authority_account_id, ..)
                 | CanTransferAsset(authority_account_id, ..)
@@ -143,6 +146,7 @@ pub mod isi {
                 PermissionInstruction::CanAnything(_) => Permission::Anything,
                 PermissionInstruction::CanAddDomain(_) => Permission::AddDomain,
                 PermissionInstruction::CanAddListener(_) => Permission::AddListener,
+                PermissionInstruction::CanManageDEX(_) => Permission::ManageDEX,
                 PermissionInstruction::CanRegisterAccount(_, option_domain_id) => {
                     Permission::RegisterAccount(option_domain_id.clone())
                 }
@@ -212,6 +216,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -251,6 +256,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -314,6 +320,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -353,6 +360,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -416,6 +424,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -455,6 +464,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -518,6 +528,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -567,6 +578,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -607,6 +619,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -672,6 +685,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -721,6 +735,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -762,6 +777,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -832,6 +848,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -889,6 +906,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -933,6 +951,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1006,6 +1025,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1059,6 +1079,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1103,6 +1124,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1176,6 +1198,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1233,6 +1256,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1277,6 +1301,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1350,6 +1375,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1403,6 +1429,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1447,6 +1474,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1520,6 +1548,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
@@ -1573,6 +1602,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name.clone(), domain);
@@ -1617,6 +1647,7 @@ pub mod isi {
                 name: domain_name.clone(),
                 accounts,
                 asset_definitions,
+                ..Default::default()
             };
             let mut domains = BTreeMap::new();
             domains.insert(domain_name, domain);
