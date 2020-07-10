@@ -8,48 +8,17 @@ const DEX_DOMAIN_NAME: &str = "dex";
 
 type Name = String;
 
-// TODO[modbrin]: add tests in permission.rs
-
-/// Identification of a DEX definition.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
-pub struct DEXDefinitionId {
-    /// Domain name to which given DEX belongs.
-    pub domain_name: Name,
-}
-
-impl DEXDefinitionId {
-    /// Default DEX definition identifier constructor.
-    pub fn new(domain_name: &str) -> Self {
-        DEXDefinitionId {
-            domain_name: domain_name.to_owned(),
-        }
-    }
-}
-
-/// A data required for `DEX` entity initialization.
-#[derive(Encode, Decode, PartialEq, Eq, Hash, Clone, Debug, Io)]
-pub struct DEXDefinition {
-    /// An identification of the `DEXDefinition`.
-    pub id: <DEXDefinition as Identifiable>::Id,
-    /// DEX owner's account Identification. Only this account will be able to manipulate the DEX.
-    pub owner_account_id: <Account as Identifiable>::Id,
-}
-
-impl Identifiable for DEXDefinition {
-    type Id = DEXDefinitionId;
-}
-
-/// Identification of a DEX, consists of it's definition id.
+/// Identification of a DEX, consists of its domain name.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct DEXId {
-    definition_id: <DEXDefinition as Identifiable>::Id,
+    domain_name: Name,
 }
 
 impl DEXId {
     /// Default DEX identifier constructor.
     pub fn new(domain_name: &str) -> Self {
         DEXId {
-            definition_id: DEXDefinitionId::new(domain_name),
+            domain_name: domain_name.to_owned(),
         }
     }
 }
@@ -60,13 +29,16 @@ impl DEXId {
 pub struct DEX {
     /// An identification of the `DEX`.
     pub id: <DEX as Identifiable>::Id,
+    /// DEX owner's account Identification. Only this account will be able to manipulate the DEX.
+    pub owner_account_id: <Account as Identifiable>::Id,
 }
 
 impl DEX {
     /// Default `DEX` entity constructor.
-    pub fn new(domain_name: &str) -> Self {
+    pub fn new(domain_name: &str, owner_account_id: <Account as Identifiable>::Id) -> Self {
         DEX {
             id: DEXId::new(domain_name),
+            owner_account_id,
         }
     }
 }
@@ -81,32 +53,33 @@ pub mod isi {
     use super::*;
     use crate::isi::prelude::*;
     use crate::permission::isi::PermissionInstruction;
-    use crate::permission::permission_asset_definition_id;
 
     impl Peer {
-        /// Constructor of `Register<Peer, DEXDefinition>` Iroha Special Instruction.
-        pub fn initialize_dex(&self, object: DEXDefinition) -> Register<Peer, DEXDefinition> {
+        /// Constructor of `Register<Peer, DEX>` Iroha Special Instruction.
+        pub fn initialize_dex(
+            &self,
+            domain_name: &str,
+            owner_account_id: <Account as Identifiable>::Id,
+        ) -> Register<Peer, DEX> {
             Register {
-                object,
+                object: DEX::new(domain_name, owner_account_id),
                 destination_id: self.id.clone(),
             }
         }
     }
 
-    impl Register<Peer, DEXDefinition> {
-        /// Registers the `DEX` by its definition on the given `WorldStateView`.
-        ///
-        /// Constructs `DEX` entity according to provided `DEXDefinition` and
-        /// initializes it in specified domain.
-        pub(crate) fn execute(self, world_state_view: &mut WorldStateView) -> Result<(), String> {
-            let dex_definition = self.object;
-            let dex_owner_account = world_state_view
-                .read_account(&dex_definition.owner_account_id)
-                .ok_or("Account not found.")?
-                .clone();
-            PermissionInstruction::CanManageDEX(dex_owner_account.id).execute(world_state_view)?;
-            let domain_name = &dex_definition.id.domain_name;
-            let dex = DEX::new(domain_name);
+    impl Register<Peer, DEX> {
+        /// Registers the `DEX` entity with specified parameters on the given `WorldStateView`.
+        pub(crate) fn execute(
+            &self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
+            let dex = self.object.clone();
+            world_state_view
+                .read_account(&dex.owner_account_id)
+                .ok_or("Account not found.")?;
             world_state_view.initialize_dex(dex)
         }
     }
@@ -117,8 +90,6 @@ pub mod isi {
         use crate::peer::PeerId;
         use crate::permission::{permission_asset_definition_id, Permission};
         use std::collections::BTreeMap;
-
-        const DEX_NAME: &str = "Default";
 
         struct TestKit {
             world_state_view: WorldStateView,
@@ -203,11 +174,7 @@ pub mod isi {
                 .assets
                 .insert(asset_id.clone(), manage_dex_permission);
 
-            // create dex definition
-            let dex_definition = DEXDefinition {
-                id: DEXDefinitionId::new(&domain_name),
-                owner_account_id: dex_owner_account.id.clone(),
-            };
+            // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
             let domain = world_state_view
                 .peer()
@@ -223,17 +190,51 @@ pub mod isi {
 
             world_state_view
                 .peer
-                .initialize_dex(dex_definition.clone())
-                .execute(world_state_view)
+                .initialize_dex(&domain_name, dex_owner_account.id.clone())
+                .execute(dex_owner_account.id.clone(), world_state_view)
                 .expect("failed to initialize dex");
 
             let query_result = world_state_view
                 .read_dex(&domain_name)
                 .expect("query dex failed");
-            assert_eq!(&query_result.id.definition_id.domain_name, &domain_name);
+            assert_eq!(&query_result.id.domain_name, &domain_name);
         }
 
-        // TODO[modbrin]: add negative tests
+        #[test]
+        fn test_initialize_dex_should_fail_with_permission_not_found() {
+            let mut testkit = TestKit::new();
+            // create dex owner account
+            let dex_owner_public_key = KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key;
+            let mut dex_owner_account =
+                Account::with_signatory("dex_owner", "dex", dex_owner_public_key);
+            let domain_name = Name::from("Company");
+
+            // get world state view and dex domain
+            let world_state_view = &mut testkit.world_state_view;
+            let domain = world_state_view
+                .peer()
+                .domains
+                .get_mut(DEX_DOMAIN_NAME)
+                .unwrap();
+
+            // register dex owner account
+            let register_account = domain.register_account(dex_owner_account.clone());
+            register_account
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to register dex owner account");
+
+            assert_eq!(
+                world_state_view
+                    .peer
+                    .initialize_dex(&domain_name, dex_owner_account.id.clone())
+                    .execute(dex_owner_account.id.clone(), world_state_view)
+                    .unwrap_err(),
+                format!("Error: Permission not found., CanManageDEX(Id {{ name: \"{}\", domain_name: \"{}\" }})",
+                    "dex_owner", DEX_DOMAIN_NAME)
+            );
+        }
     }
 }
 
@@ -245,7 +246,7 @@ pub mod wsv {
     impl WorldStateView {
         /// Initialize the `DEX` for domain.
         pub fn initialize_dex(&mut self, dex: DEX) -> Result<(), String> {
-            let domain_name = &dex.id.definition_id.domain_name;
+            let domain_name = &dex.id.domain_name;
             let domain = self
                 .peer()
                 .domains
