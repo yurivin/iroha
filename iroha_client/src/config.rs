@@ -60,7 +60,7 @@ impl Configuration {
             torii_url: configuration.torii_configuration.torii_url.clone(),
             public_key: configuration.public_key.clone(),
             private_key: configuration.private_key.clone(),
-            torii_connect_url: default_torii_connect_url(),
+            torii_connect_url: configuration.torii_configuration.torii_connect_url.clone(),
             transaction_time_to_live_ms: configuration
                 .queue_configuration
                 .transaction_time_to_live_ms,
