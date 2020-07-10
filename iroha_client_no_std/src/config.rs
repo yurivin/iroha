@@ -19,6 +19,7 @@ const DEFAULT_TRANSACTION_TIME_TO_LIVE_MS: u64 = 100_000;
 
 /// `Configuration` provides an ability to define client parameters such as `TORII_URL`.
 #[derive(Clone, Deserialize, Debug)]
+#[serde(crate = "serde")]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Configuration {
     /// Public key of this client.
