@@ -3,7 +3,7 @@ use crate::prelude::*;
 use crate::torii::uri;
 use crate::crypto::KeyPair;
 use iroha_derive::log;
-use iroha_network::{prelude::*, Network};
+// use iroha_network::{prelude::*, Network};
 use alloc::{
     string::String,
     vec::Vec,
@@ -32,6 +32,7 @@ impl Client {
         }
     }
 
+    /*
     /// Instructions API entry point. Submits one Iroha Special Instruction to `Iroha` peers.
     // #[log]
     pub async fn submit(&mut self, instruction: Instruction) -> Result<(), String> {
@@ -109,6 +110,7 @@ impl Client {
             Response::InternalError => Err("Server error.".to_string()),
         }
     }
+    */
 }
 
 impl Debug for Client {
