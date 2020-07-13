@@ -95,7 +95,7 @@ pub struct TokenPair {
     /// Precision of the exchange rate, measured in a number of decimal places.
     pub precision: u8,
     /// Fraction of price by which it can change.
-    pub price_step: u32, // TODO: fix problem with f32
+    pub price_step: u32,
 }
 
 impl Identifiable for TokenPair {
@@ -127,77 +127,120 @@ pub mod isi {
     use crate::permission::isi::PermissionInstruction;
     use std::collections::btree_map::Entry;
 
-    /// Registers the `DEX` entity with specified parameters on the given `WorldStateView`.
+    /// Constructor of `Register<Domain, DEX>` ISI.
+    ///
+    /// Initializes DEX for the domain.
     pub fn initialize_dex(
         domain_name: &str,
         owner_account_id: <Account as Identifiable>::Id,
-        authority: <Account as Identifiable>::Id,
-        world_state_view: &mut WorldStateView,
-    ) -> Result<(), String> {
-        PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
-        world_state_view
-            .read_account(&owner_account_id)
-            .ok_or("Account not found.")?;
-        let domain = world_state_view
-            .peer()
-            .domains
-            .get_mut(domain_name)
-            .ok_or("domain not found")?;
-        let dex = DEX::new(domain_name, owner_account_id);
-        if domain.dex.is_none() {
-            domain.dex = Some(dex);
-            Ok(())
-        } else {
-            Err("dex is already initialized for domain".to_owned())
+    ) -> Register<Domain, DEX> {
+        Register {
+            object: DEX::new(domain_name, owner_account_id),
+            destination_id: domain_name.to_owned(),
         }
     }
 
-    /// Constructs new `TokenPair` and stores it in `DEX` identified by its domain name.
+    impl Register<Domain, DEX> {
+        pub(crate) fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
+            let dex = self.object;
+            let domain_name = self.destination_id;
+            world_state_view
+                .read_account(&dex.owner_account_id)
+                .ok_or("Account not found.")?;
+            let domain = world_state_view
+                .peer()
+                .domains
+                .get_mut(&domain_name)
+                .ok_or("domain not found")?;
+            if domain.dex.is_none() {
+                domain.dex = Some(dex);
+                Ok(())
+            } else {
+                Err("dex is already initialized for domain".to_owned())
+            }
+        }
+    }
+
+    /// Constructor of `Add<DEX, TokenPair>` ISI.
+    ///
+    /// Creates new Token Pair via given asset ids for the DEX
+    /// identified by its domain name.
     pub fn create_token_pair(
         base_asset: <AssetDefinition as Identifiable>::Id,
         target_asset: <AssetDefinition as Identifiable>::Id,
         domain_name: &str,
-        authority: <Account as Identifiable>::Id,
-        world_state_view: &mut WorldStateView,
-    ) -> Result<(), String> {
-        PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
-        let dex = world_state_view
-            .domain(domain_name)
-            .ok_or("domain not found")?
-            .dex
-            .as_mut()
-            .ok_or("dex not initialized for domain")?;
-        let token_pair = TokenPair::new(dex.id.clone(), base_asset, target_asset, 0, 0);
-        match dex.token_pairs.entry(token_pair.id.clone()) {
-            Entry::Occupied(_) => Err("token pair already exists".to_owned()),
-            Entry::Vacant(entry) => {
-                entry.insert(token_pair);
-                Ok(())
+    ) -> Add<DEX, TokenPair> {
+        let dex_id = DEXId::new(domain_name);
+        Add {
+            object: TokenPair::new(dex_id.clone(), base_asset, target_asset, 0, 0),
+            destination_id: dex_id,
+        }
+    }
+
+    impl Add<DEX, TokenPair> {
+        pub(crate) fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
+            let domain_name = self.destination_id.domain_name;
+            let token_pair = self.object;
+            let dex = world_state_view
+                .domain(&domain_name)
+                .ok_or("domain not found")?
+                .dex
+                .as_mut()
+                .ok_or("dex not initialized for domain")?;
+            match dex.token_pairs.entry(token_pair.id.clone()) {
+                Entry::Occupied(_) => Err("token pair already exists".to_owned()),
+                Entry::Vacant(entry) => {
+                    entry.insert(token_pair);
+                    Ok(())
+                }
             }
         }
     }
 
-    /// Removes the `TokenPair` by its id.
+    /// Constructor of `Remove<DEX, TokenPairId>` ISI.
     ///
-    /// Id can be manually constructed from asset ids and domain name:
+    /// Removes existing Token Pair by its id from the DEX.
     pub fn remove_token_pair(
         token_pair_id: <TokenPair as Identifiable>::Id,
-        authority: <Account as Identifiable>::Id,
-        world_state_view: &mut WorldStateView,
-    ) -> Result<(), String> {
-        PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
-        let dex = world_state_view
-            .domain(&token_pair_id.dex_id.domain_name)
-            .ok_or("domain not found")?
-            .dex
-            .as_mut()
-            .ok_or("dex not initialized for domain")?;
-        match dex.token_pairs.entry(token_pair_id.clone()) {
-            Entry::Occupied(entry) => {
-                entry.remove();
-                Ok(())
+    ) -> Remove<DEX, <TokenPair as Identifiable>::Id> {
+        let dex_id = DEXId::new(&token_pair_id.dex_id.domain_name);
+        Remove {
+            object: token_pair_id,
+            destination_id: dex_id,
+        }
+    }
+
+    impl Remove<DEX, <TokenPair as Identifiable>::Id> {
+        pub(crate) fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
+            let token_pair_id = self.object;
+            let dex = world_state_view
+                .domain(&token_pair_id.dex_id.domain_name)
+                .ok_or("domain not found")?
+                .dex
+                .as_mut()
+                .ok_or("dex not initialized for domain")?;
+            match dex.token_pairs.entry(token_pair_id.clone()) {
+                Entry::Occupied(entry) => {
+                    entry.remove();
+                    Ok(())
+                }
+                Entry::Vacant(_) => Err("token pair does not exist".to_owned()),
             }
-            Entry::Vacant(_) => Err("token pair does not exist".to_owned()),
         }
     }
 
@@ -308,13 +351,9 @@ pub mod isi {
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register dex owner account");
 
-            initialize_dex(
-                &domain_name,
-                dex_owner_account.id.clone(),
-                dex_owner_account.id.clone(),
-                world_state_view,
-            )
-            .expect("failed to initialize dex");
+            initialize_dex(&domain_name, dex_owner_account.id.clone())
+                .execute(dex_owner_account.id.clone(), world_state_view)
+                .expect("failed to initialize dex");
 
             let dex_query_result = world_state_view
                 .read_dex(&domain_name)
@@ -354,16 +393,17 @@ pub mod isi {
                 initialize_dex(
                     &domain_name,
                     dex_owner_account.id.clone(),
+                ).execute(
                     dex_owner_account.id.clone(),
-                    world_state_view)
-                    .unwrap_err(),
+                    world_state_view
+                ).unwrap_err(),
                 format!("Error: Permission not found., CanManageDEX(Id {{ name: \"{}\", domain_name: \"{}\" }})",
                         "dex_owner", DEX_DOMAIN_NAME)
             );
         }
 
         #[test]
-        fn create_token_pair_should_pass() {
+        fn create_and_delete_token_pair_should_pass() {
             let mut testkit = TestKit::new();
             // create dex owner account
             let dex_owner_public_key = KeyPair::generate()
@@ -401,14 +441,9 @@ pub mod isi {
                 .expect("failed to register dex owner account");
 
             // initialize dex in domain
-
-            initialize_dex(
-                &domain_name,
-                dex_owner_account.id.clone(),
-                dex_owner_account.id.clone(),
-                &mut world_state_view,
-            )
-            .expect("failed to initialize dex");
+            initialize_dex(&domain_name, dex_owner_account.id.clone())
+                .execute(dex_owner_account.id.clone(), &mut world_state_view)
+                .expect("failed to initialize dex");
 
             // register assets in domain
             let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("A", "Company"));
@@ -426,9 +461,8 @@ pub mod isi {
                 asset_definition_a.id.clone(),
                 asset_definition_b.id.clone(),
                 &domain_name,
-                dex_owner_account.id.clone(),
-                world_state_view,
             )
+            .execute(dex_owner_account.id.clone(), world_state_view)
             .expect("create token pair failed");
 
             let token_pair_id = TokenPairId::new(
@@ -443,11 +477,24 @@ pub mod isi {
             let token_pair_list = query_token_pair_list(&domain_name, world_state_view)
                 .expect("failed to query token pair list")
                 .collect::<Vec<_>>();
-            assert_eq!(&token_pair_list, &[&token_pair]);
+            assert_eq!(&token_pair_list, &[token_pair]);
 
             let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
                 .expect("failed to query token pair count");
             assert_eq!(token_pair_count, 1);
+
+            remove_token_pair(token_pair_id.clone())
+                .execute(dex_owner_account.id.clone(), world_state_view)
+                .expect("remove token pair failed");
+
+            let token_pair_list = query_token_pair_list(&domain_name, world_state_view)
+                .expect("failed to query token pair list")
+                .collect::<Vec<_>>();
+            assert!(&token_pair_list.is_empty());
+
+            let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
+                .expect("failed to query token pair count");
+            assert_eq!(token_pair_count, 0);
         }
     }
 }
@@ -489,16 +536,16 @@ pub mod query {
     pub fn query_token_pair(
         token_pair_id: <TokenPair as Identifiable>::Id,
         world_state_view: &WorldStateView,
-    ) -> Option<TokenPair> {
+    ) -> Option<&TokenPair> {
         let dex = world_state_view.read_dex(&token_pair_id.dex_id.domain_name)?;
-        Some(dex.token_pairs.get(&token_pair_id)?.clone())
+        Some(dex.token_pairs.get(&token_pair_id)?)
     }
 
     /// A query to get a list of all active `TokenPair`s of a DEX identified by its domain name.
     pub fn query_token_pair_list<'a>(
         domain_name: &str,
         world_state_view: &'a WorldStateView,
-    ) -> Option<impl Iterator<Item = &'a TokenPair> + 'a> {
+    ) -> Option<impl Iterator<Item = &'a TokenPair>> {
         let dex = world_state_view.read_dex(domain_name)?;
         Some(dex.token_pairs.iter().map(|(_, value)| value))
     }
