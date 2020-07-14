@@ -121,7 +121,10 @@ impl Debug for Client {
 pub mod maintenance {
     use super::*;
     use async_std::stream::StreamExt;
-    use iroha::{event::Occurrence, maintenance::*};
+    use iroha::{
+        event::{Entity, Occurrence},
+        maintenance::*,
+    };
 
     impl Client {
         pub fn with_maintenance(configuration: &Configuration) -> MaintenanceClient {
@@ -196,7 +199,11 @@ pub mod maintenance {
                 .connect(&initial_message)
                 .await
                 .expect("Failed to connect.")
-                .map(|vector| Occurrence::try_from(vector).expect("Failed to parse Occurrence."));
+                .map(|vector| Occurrence::try_from(vector).expect("Failed to parse Occurrence."))
+                .filter(|occurrence| match occurrence.entity() {
+                    Entity::Block(_) => true,
+                    _ => false,
+                });
             Ok(connection)
         }
 
@@ -213,7 +220,11 @@ pub mod maintenance {
                 .connect(&initial_message)
                 .await
                 .expect("Failed to connect.")
-                .map(|vector| Occurrence::try_from(vector).expect("Failed to parse Occurrence."));
+                .map(|vector| Occurrence::try_from(vector).expect("Failed to parse Occurrence."))
+                .filter(|occurrence| match occurrence.entity() {
+                    Entity::Transaction(_) => true,
+                    _ => false,
+                });
             Ok(connection)
         }
     }
