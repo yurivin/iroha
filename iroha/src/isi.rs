@@ -25,6 +25,9 @@ pub enum Instruction {
     Permission(crate::permission::isi::PermissionInstruction),
     /// Instruction variants connected to different Iroha Events.
     Event(crate::event::isi::EventInstruction),
+    #[cfg(feature = "dex")]
+    /// Instruction variants related to `DEX`.
+    DEX(crate::dex::isi::DEXInstruction),
     /// This variant of Iroha Special Instruction composes two other instructions into one, and
     /// executes them both.
     Compose(Box<Instruction>, Box<Instruction>),
@@ -57,6 +60,7 @@ impl Instruction {
             Instruction::Account(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Permission(origin) => Ok(origin.execute(world_state_view)?),
             Instruction::Event(origin) => Ok(origin.execute(authority, world_state_view)?),
+            Instruction::DEX(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Compose(left, right) => {
                 left.execute(authority.clone(), world_state_view)?;
                 right.execute(authority, world_state_view)?;

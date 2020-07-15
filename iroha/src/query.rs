@@ -1,6 +1,6 @@
 //! This module contains query related Iroha functionality.
 
-use crate::{account, asset, prelude::*};
+use crate::{account, asset, dex, prelude::*};
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
 
@@ -22,6 +22,10 @@ pub enum IrohaQuery {
     GetAccountAssets(asset::query::GetAccountAssets),
     /// Query Account information.
     GetAccount(account::query::GetAccount),
+    /// Query all active DEX in the network.
+    GetDEXList(dex::query::GetDEXList),
+    /// Query all active Token Pairs for DEX.
+    GetTokenPairList(dex::query::GetTokenPairList),
 }
 
 /// Result of queries execution.
@@ -29,8 +33,12 @@ pub enum IrohaQuery {
 pub enum QueryResult {
     /// Query all Assets related to the Account result.
     GetAccountAssets(asset::query::GetAccountAssetsResult),
-    /// Query Account information.
+    /// Query Account information result.
     GetAccount(account::query::GetAccountResult),
+    /// Query all active DEX in the network result.
+    GetDEXList(dex::query::GetDEXListResult),
+    /// Query all active Token Pairs for DEX result.
+    GetTokenPairList(dex::query::GetTokenPairListResult),
 }
 
 impl IrohaQuery {
@@ -41,6 +49,8 @@ impl IrohaQuery {
         match self {
             IrohaQuery::GetAccountAssets(query) => query.execute(world_state_view),
             IrohaQuery::GetAccount(query) => query.execute(world_state_view),
+            IrohaQuery::GetDEXList(query) => query.execute(world_state_view),
+            IrohaQuery::GetTokenPairList(query) => query.execute(world_state_view),
         }
     }
 }

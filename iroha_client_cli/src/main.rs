@@ -4,6 +4,7 @@ const CONFIG: &str = "config";
 const DOMAIN: &str = "domain";
 const ACCOUNT: &str = "account";
 const ASSET: &str = "asset";
+const DEX: &str = "dex";
 
 fn main() {
     let matches = App::new("Iroha CLI Client")
@@ -28,6 +29,9 @@ fn main() {
         .subcommand(
             asset::build_app(),
         )
+        .subcommand(
+            dex::build_app(),
+        )
         .get_matches();
     if let Some(configuration_path) = matches.value_of(CONFIG) {
         println!("Value for config: {}", configuration_path);
@@ -40,6 +44,9 @@ fn main() {
     }
     if let Some(ref matches) = matches.subcommand_matches(ASSET) {
         asset::process(matches);
+    }
+    if let Some(ref matches) = matches.subcommand_matches(DEX) {
+        dex::process(matches);
     }
 }
 
@@ -206,18 +213,18 @@ mod asset {
                     .required(true),
             )
             )
-               .subcommand(
+                .subcommand(
                     App::new(MINT)
                     .about("Use this command to Mint Asset in existing Iroha Account.")
                     .arg(Arg::with_name(ASSET_ACCOUNT_ID).long(ASSET_ACCOUNT_ID).value_name(ASSET_ACCOUNT_ID).help("Account's id as double-quoted string in the following format `account_name@domain_name`.").takes_value(true).required(true))
                     .arg(Arg::with_name(ASSET_ID).long(ASSET_ID).value_name(ASSET_ID).help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.").takes_value(true).required(true))
                     .arg(Arg::with_name(QUANTITY).long(QUANTITY).value_name(QUANTITY).help("Asset's quantity as a number.").takes_value(true).required(true))
                 )
-.subcommand(
-App::new(GET)
-                .about("Use this command to get Asset information from Iroha Account.")
-                    .arg(Arg::with_name(ASSET_ACCOUNT_ID).long(ASSET_ACCOUNT_ID).value_name(ASSET_ACCOUNT_ID).help("Account's id as double-quoted string in the following format `account_name@domain_name`.").takes_value(true).required(true))
-                    .arg(Arg::with_name(ASSET_ID).long(ASSET_ID).value_name(ASSET_ID).help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.").takes_value(true).required(true))
+                .subcommand(
+                    App::new(GET)
+                    .about("Use this command to get Asset information from Iroha Account.")
+                        .arg(Arg::with_name(ASSET_ACCOUNT_ID).long(ASSET_ACCOUNT_ID).value_name(ASSET_ACCOUNT_ID).help("Account's id as double-quoted string in the following format `account_name@domain_name`.").takes_value(true).required(true))
+                        .arg(Arg::with_name(ASSET_ID).long(ASSET_ID).value_name(ASSET_ID).help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.").takes_value(true).required(true))
 
             )
     }
@@ -303,6 +310,214 @@ App::new(GET)
         .expect("Failed to get asset.");
         if let QueryResult::GetAccountAssets(result) = query_result {
             println!("Get Asset result: {:?}", result);
+        }
+    }
+}
+
+mod dex {
+    use super::*;
+    use clap::ArgMatches;
+    use futures::executor;
+    use iroha::dex::query::{GetDEXList, GetTokenPairList};
+    use iroha::{isi, prelude::*};
+    use iroha_client::{
+        client::{self, Client},
+        config::Configuration,
+    };
+
+    const INITIALIZE: &str = "initialize";
+    const TOKEN_PAIR: &str = "token_pair";
+    const CREATE: &str = "create";
+    const REMOVE: &str = "remove";
+    const LIST: &str = "list";
+    const OWNER_ACCOUNT_ID: &str = "owner_account_id";
+    const DOMAIN_NAME: &str = "domain";
+    const BASE: &str = "base";
+    const TARGET: &str = "target";
+
+    pub fn build_app<'a, 'b>() -> App<'a, 'b> {
+        App::new(DEX)
+            .about("Use this command to work with DEX Entities in Iroha Peer.")
+            .subcommand(
+                App::new(INITIALIZE)
+                    .about("Use this command to initialize the DEX in existing Iroha Domain.")
+                    .arg(
+                        Arg::with_name(DOMAIN_NAME)
+                            .long(DOMAIN_NAME)
+                            .value_name(DOMAIN_NAME)
+                            .help("DEX's Domain's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true)
+                    )
+                    .arg(
+                        Arg::with_name(OWNER_ACCOUNT_ID)
+                            .long(OWNER_ACCOUNT_ID)
+                            .value_name(OWNER_ACCOUNT_ID)
+                            .help("DEX Owner Account's id as double-quoted string in the following format `account_name@domain_name`.")
+                            .takes_value(true)
+                            .required(true)
+                    )
+            )
+            .subcommand(
+                App::new(LIST)
+                    .about("Use this command to list all active DEX in Iroha Peer.")
+            )
+            .subcommand(
+                App::new(TOKEN_PAIR)
+                    .about("Use this command to work with TokenPair Entities in active DEX.")
+                    .subcommand(
+                        App::new(CREATE)
+                            .about("Use this command to create a new Token Pair for existing Assets.")
+                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                    )
+                    .subcommand(
+                        App::new(REMOVE)
+                            .about("Use this command to delete existing Token Pair from the DEX.")
+                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                    )
+                    .subcommand(
+                        App::new(LIST)
+                            .about("Use this command to list all active Token Pairs in a DEX.")
+                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                    )
+            )
+    }
+
+    pub fn process(matches: &ArgMatches<'_>) {
+        if let Some(ref matches) = matches.subcommand_matches(INITIALIZE) {
+            if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                println!("Initializing DEX in the domain: {}", domain_name);
+                if let Some(owner_account_id) = matches.value_of(OWNER_ACCOUNT_ID) {
+                    println!("Initializing DEX with owner account: {}", owner_account_id);
+                    initialize_dex(domain_name, owner_account_id);
+                }
+            }
+        }
+        if let Some(ref _matches) = matches.subcommand_matches(LIST) {
+            println!("Listing all active DEX");
+            list_dex();
+        }
+        if let Some(ref matches) = matches.subcommand_matches(TOKEN_PAIR) {
+            if let Some(ref matches) = matches.subcommand_matches(CREATE) {
+                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                    println!("Creating Token Pair in the domain: {}", domain_name);
+                    if let Some(base_asset) = matches.value_of(BASE) {
+                        println!(
+                            "Creating Token Pair with base asset: {}#{}",
+                            base_asset, domain_name
+                        );
+                        if let Some(target_asset) = matches.value_of(TARGET) {
+                            println!(
+                                "Creating Token Pair with target asset: {}#{}",
+                                target_asset, domain_name
+                            );
+                            create_token_pair(domain_name, base_asset, target_asset);
+                        }
+                    }
+                }
+            }
+            if let Some(ref matches) = matches.subcommand_matches(REMOVE) {
+                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                    println!("Removing Token Pair in the domain: {}", domain_name);
+                    if let Some(base_asset) = matches.value_of(BASE) {
+                        println!("Removing Token Pair with base asset: {}", base_asset);
+                        if let Some(target_asset) = matches.value_of(TARGET) {
+                            println!("Removing Token Pair with target asset: {}", target_asset);
+                            remove_token_pair(domain_name, base_asset, target_asset);
+                        }
+                    }
+                }
+            }
+            if let Some(ref matches) = matches.subcommand_matches(LIST) {
+                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                    println!("Listing active Token Pairs in the domain: {}", domain_name);
+                    list_token_pairs(domain_name)
+                }
+            }
+        }
+    }
+
+    fn initialize_dex(domain_name: &str, dex_owner: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let owner_account_id = AccountId::from(dex_owner);
+        executor::block_on(
+            iroha_client.submit(
+                isi::Register {
+                    object: DEX::new(domain_name, owner_account_id),
+                    destination_id: <Domain as Identifiable>::Id::from(domain_name),
+                }
+                .into(),
+            ),
+        )
+        .expect("Failed to initialize dex.");
+    }
+
+    fn list_dex() {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let query_result = executor::block_on(iroha_client.request(&GetDEXList::build_request()))
+            .expect("Failed to list DEX.");
+        if let QueryResult::GetDEXList(result) = query_result {
+            println!("Get DEX list result: {:?}", result);
+        }
+    }
+
+    fn create_token_pair(domain_name: &str, base_asset_name: &str, target_asset_name: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let dex_id = DEXId::new(domain_name);
+        let base_asset_id = AssetDefinitionId::new(base_asset_name, domain_name);
+        let target_asset_id = AssetDefinitionId::new(target_asset_name, domain_name);
+        executor::block_on(
+            iroha_client.submit(
+                isi::Add {
+                    object: TokenPair::new(dex_id.clone(), base_asset_id, target_asset_id, 0, 0),
+                    destination_id: dex_id,
+                }
+                .into(),
+            ),
+        )
+        .expect("Failed to create Token Pair.");
+    }
+
+    fn remove_token_pair(domain_name: &str, base_asset: &str, target_asset: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let dex_id = DEXId::new(domain_name);
+        let base_asset_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(dex_id.clone(), base_asset_id, target_asset_id);
+        executor::block_on(
+            iroha_client.submit(
+                isi::Remove {
+                    object: token_pair_id,
+                    destination_id: dex_id,
+                }
+                .into(),
+            ),
+        )
+        .expect("Failed to remove Token Pair.");
+    }
+
+    fn list_token_pairs(domain_name: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let query_result = executor::block_on(iroha_client.request(
+            &GetTokenPairList::build_request(<Domain as Identifiable>::Id::from(domain_name)),
+        ))
+        .expect("Failed to list Token Pairs.");
+        if let QueryResult::GetTokenPairList(result) = query_result {
+            println!("Get TokenPair list result: {:?}", result);
         }
     }
 }

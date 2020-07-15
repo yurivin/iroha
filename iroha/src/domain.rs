@@ -15,6 +15,7 @@ pub struct Domain {
     pub accounts: BTreeMap<<Account as Identifiable>::Id, Account>,
     /// Assets of the domain.
     pub asset_definitions: BTreeMap<<AssetDefinition as Identifiable>::Id, AssetDefinition>,
+    #[cfg(feature = "dex")]
     /// DEX of domain, must be initialized before use.
     pub dex: Option<DEX>,
 }

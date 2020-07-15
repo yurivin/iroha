@@ -295,5 +295,5 @@ pub mod prelude {
 
     #[doc(inline)]
     #[cfg(feature = "dex")]
-    pub use crate::dex::DEX;
+    pub use crate::dex::{DEXId, TokenPair, TokenPairId, DEX};
 }

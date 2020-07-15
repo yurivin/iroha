@@ -6,6 +6,7 @@ use parity_scale_codec::{Decode, Encode};
 use std::collections::BTreeMap;
 
 const DEX_DOMAIN_NAME: &str = "dex";
+const DEX_BASE_ASSET: &str = "XOR";
 
 type Name = String;
 
@@ -127,6 +128,42 @@ pub mod isi {
     use crate::permission::isi::PermissionInstruction;
     use std::collections::btree_map::Entry;
 
+    /// Enumeration of all legal DEX related Instructions.
+    #[derive(Clone, Debug, Io, Encode, Decode)]
+    pub enum DEXInstruction {
+        /// Variant of instruction to initialize `DEX` entity in `Domain`.
+        InitializeDEX(DEX, <Domain as Identifiable>::Id),
+        /// Variant of instruction to create new `TokenPair` entity in `DEX`.
+        CreateTokenPair(TokenPair, <DEX as Identifiable>::Id),
+        /// Variant of instruction to remove existing `TokenPair` entity from `DEX`.
+        RemoveTokenPair(<TokenPair as Identifiable>::Id, <DEX as Identifiable>::Id),
+    }
+
+    impl DEXInstruction {
+        /// Executes `DEXInstruction` on the given `WorldStateView`.
+        /// Returns `Ok(())` if execution succeeded and `Err(String)` with error message if not.
+        pub fn execute(
+            &self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            match self {
+                DEXInstruction::InitializeDEX(dex, domain_name) => {
+                    Register::new(dex.clone(), domain_name.clone())
+                        .execute(authority, world_state_view)
+                }
+                DEXInstruction::CreateTokenPair(token_pair, dex_id) => {
+                    Add::new(token_pair.clone(), dex_id.clone())
+                        .execute(authority, world_state_view)
+                }
+                DEXInstruction::RemoveTokenPair(token_pair_id, dex_id) => {
+                    Remove::new(token_pair_id.clone(), dex_id.clone())
+                        .execute(authority, world_state_view)
+                }
+            }
+        }
+    }
+
     /// Constructor of `Register<Domain, DEX>` ISI.
     ///
     /// Initializes DEX for the domain.
@@ -166,6 +203,15 @@ pub mod isi {
         }
     }
 
+    impl From<Register<Domain, DEX>> for Instruction {
+        fn from(instruction: Register<Domain, DEX>) -> Self {
+            Instruction::DEX(DEXInstruction::InitializeDEX(
+                instruction.object,
+                instruction.destination_id,
+            ))
+        }
+    }
+
     /// Constructor of `Add<DEX, TokenPair>` ISI.
     ///
     /// Creates new Token Pair via given asset ids for the DEX
@@ -191,9 +237,41 @@ pub mod isi {
             PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let domain_name = self.destination_id.domain_name;
             let token_pair = self.object;
-            let dex = world_state_view
+            // Get domain
+            let domain = world_state_view
                 .domain(&domain_name)
-                .ok_or("domain not found")?
+                .ok_or("domain not found")?;
+            let base_asset_definition = &token_pair.id.base_asset;
+            let target_asset_definition = &token_pair.id.target_asset;
+            if !domain.asset_definitions.contains_key(base_asset_definition) {
+                return Err(format!(
+                    "base asset definition: {:?} not found",
+                    base_asset_definition
+                ));
+            }
+            if &base_asset_definition.name != DEX_BASE_ASSET {
+                return Err(format!(
+                    "base asset definition is incorrect: {}",
+                    base_asset_definition
+                ));
+            }
+            if !domain
+                .asset_definitions
+                .contains_key(target_asset_definition)
+            {
+                return Err(format!(
+                    "target asset definition: {:?} not found",
+                    target_asset_definition
+                ));
+            }
+            if base_asset_definition.domain_name != target_asset_definition.domain_name {
+                return Err("assets in token pair must be in same domain".to_owned());
+            }
+            if base_asset_definition.name == target_asset_definition.name {
+                return Err("assets in token pair must be different".to_owned());
+            }
+            // TODO: add check for owner account existence
+            let dex = domain
                 .dex
                 .as_mut()
                 .ok_or("dex not initialized for domain")?;
@@ -204,6 +282,15 @@ pub mod isi {
                     Ok(())
                 }
             }
+        }
+    }
+
+    impl From<Add<DEX, TokenPair>> for Instruction {
+        fn from(instruction: Add<DEX, TokenPair>) -> Self {
+            Instruction::DEX(DEXInstruction::CreateTokenPair(
+                instruction.object,
+                instruction.destination_id,
+            ))
         }
     }
 
@@ -241,6 +328,15 @@ pub mod isi {
                 }
                 Entry::Vacant(_) => Err("token pair does not exist".to_owned()),
             }
+        }
+    }
+
+    impl From<Remove<DEX, <TokenPair as Identifiable>::Id>> for Instruction {
+        fn from(instruction: Remove<DEX, <TokenPair as Identifiable>::Id>) -> Self {
+            Instruction::DEX(DEXInstruction::RemoveTokenPair(
+                instruction.object,
+                instruction.destination_id,
+            ))
         }
     }
 
@@ -520,6 +616,44 @@ pub mod wsv {
 /// Query module provides functions for performing dex-related queries.
 pub mod query {
     use super::*;
+    use crate::query::IrohaQuery;
+    use iroha_derive::*;
+    use std::time::SystemTime;
+
+    /// Get list of active DEX in the network.
+    #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
+    pub struct GetDEXList;
+
+    /// Result of the `GetDEXList` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetDEXListResult {
+        /// List of DEX.
+        pub dex_list: Vec<DEX>,
+    }
+
+    impl GetDEXList {
+        /// Build a `GetDEXList` query in the form of a `QueryRequest`.
+        pub fn build_request() -> QueryRequest {
+            let query = GetDEXList;
+            QueryRequest {
+                timestamp: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis()
+                    .to_string(),
+                signature: Option::None,
+                query: query.into(),
+            }
+        }
+    }
+
+    impl Query for GetDEXList {
+        #[log]
+        fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
+            let dex_list = query_dex_list(world_state_view).cloned().collect();
+            Ok(QueryResult::GetDEXList(GetDEXListResult { dex_list }))
+        }
+    }
 
     /// A query to get a list of all active DEX in network.
     pub fn query_dex_list<'a>(
@@ -530,6 +664,51 @@ pub mod query {
             .domains
             .iter()
             .filter_map(|(_, domain)| domain.dex.as_ref())
+    }
+
+    /// Get list of active Token Pairs for Domain by its name.
+    #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
+    pub struct GetTokenPairList {
+        domain_name: <Domain as Identifiable>::Id,
+    }
+
+    /// Result of the `GetTokenPairList` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetTokenPairListResult {
+        /// List of DEX.
+        pub token_pair_list: Vec<TokenPair>,
+    }
+
+    impl GetTokenPairList {
+        /// Build a `GetTokenPairList` query in the form of a `QueryRequest`.
+        pub fn build_request(domain_name: <Domain as Identifiable>::Id) -> QueryRequest {
+            let query = GetTokenPairList { domain_name };
+            QueryRequest {
+                timestamp: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis()
+                    .to_string(),
+                signature: Option::None,
+                query: query.into(),
+            }
+        }
+    }
+
+    impl Query for GetTokenPairList {
+        #[log]
+        fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
+            let token_pair_list = query_token_pair_list(&self.domain_name, world_state_view)
+                .ok_or(format!(
+                    "No domain with name: {:?} found in the current world state: {:?}",
+                    &self.domain_name, world_state_view
+                ))?
+                .cloned()
+                .collect();
+            Ok(QueryResult::GetTokenPairList(GetTokenPairListResult {
+                token_pair_list,
+            }))
+        }
     }
 
     /// A query to get a particular `TokenPair` identified by its id.

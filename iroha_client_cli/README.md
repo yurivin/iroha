@@ -98,17 +98,39 @@ As you can see, we use new command `asset` and it's subcommands `register` and `
 
 ### Query Account Assets Quantity
 
-Because distributed systems heavily relay on the concept of eventual consistency and Iroha works in Consensus between peers, your requests may or may not be processed
-while Iroha Client will successufully send them and Iroha Peer will accept them. Different stages of transactions processing and different cases may lead to
+Because distributed systems heavily rely on the concept of eventual consistency and Iroha works in Consensus between peers, your requests may or may not be processed
+while Iroha Client will successfully send them and Iroha Peer will accept them. Different stages of transactions processing and different cases may lead to
 rejection of transaction after your receive response from Command Line Interface. To check that your instruction were applied and system now in the desired state
-you need to become familar and use Query API.
+you need to become familiar and use Query API.
 
 Let's use Get Account Assets Query as an example. Command will look familar because it almost the same as the update command.
-We need to know quantity so we skipp this argument and replace `update asset add` part with `get asset`.
+We need to know quantity so we skip this argument and replace `update asset add` part with `get asset`.
 
 ```bash
 ./iroha_client_cli asset get --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" 
 ```
+
+### DEX Management
+
+Extension of Iroha allows to introduce Decentralized Exchanges functionality. Exchanges can be done between assets in same domain.
+
+Firstly the DEX needs be initialized for the domain:
+```bash
+./iroha_client_cli dex initialize --domain="Company" --owner_account_id="Some Owner@Company" --key=""
+```
+
+To see all active DEX in network use:
+```bash
+./iroha client_cli dex list
+```
+
+Next, exchange pairs could be added/removed/viewed in the DEX:
+```bash
+./iroha_client_cli dex token_pair create --domain="Company" --base="XOR" --target="DOT"
+./iroha_client_cli dex token_pair remove --domain="Company" --base="XOR" --target="DOT"
+./iroha_client_cli dex token_pair list --domain="Company"
+```
+
 
 ### Want to help us develop Iroha?
 
