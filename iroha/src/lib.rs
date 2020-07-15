@@ -45,6 +45,10 @@ use async_std::{
     task,
 };
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use crate::domain::isi::DomainInstruction;
+use crate::peer::isi::PeerInstruction;
+use crate::tx::Payload;
+use std::time::SystemTime;
 
 /// The interval at which sumeragi checks if there are tx in the `queue`.
 pub const TX_RETRIEVAL_INTERVAL: Duration = Duration::from_millis(100);
@@ -117,7 +121,7 @@ impl Iroha {
             Account::with_signatory(&account_id.name, &account_id.domain_name, config.public_key);
         account.assets.insert(asset_id, asset);
         let mut accounts = BTreeMap::new();
-        accounts.insert(account_id, account);
+        accounts.insert(account_id.clone(), account);
         let domain = Domain {
             name: domain_name.clone(),
             accounts,
@@ -140,6 +144,35 @@ impl Iroha {
             System::new(&config),
             (events_sender.clone(), events_receiver),
         );
+        let tx_sender = transactions_sender.clone();
+        let cfg = config.clone();
+        task::spawn(async move {
+            task::sleep(Duration::from_secs(20)).await;
+            let isi = Instruction::Peer(PeerInstruction::AddDomain("saf".into(), PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key)));
+            let (pk, sk) = cfg.key_pair();
+            let kp = KeyPair {
+                public_key: pk,
+                private_key: sk
+            };
+            let payload = Payload {
+                instructions: vec![isi],
+                account_id,
+                creation_time: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis() as u64,
+                time_to_live_ms: 10000,
+            };
+            let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
+            let tx = AcceptedTransaction {
+                payload,
+                signatures: vec![
+                    sig
+                ]
+            };
+            tx_sender.send(tx).await;
+        });
+        println!("1");
         let kura = Kura::from_configuration(&config.kura_configuration, wsv_blocks_sender);
         let sumeragi = Arc::new(RwLock::new(
             Sumeragi::from_configuration(
@@ -147,7 +180,7 @@ impl Iroha {
                 Arc::new(RwLock::new(kura_blocks_sender)),
                 events_sender,
                 world_state_view.clone(),
-                transactions_sender,
+                transactions_sender.clone(),
                 kura.latest_block_hash(),
                 kura.height(),
             )

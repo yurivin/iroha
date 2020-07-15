@@ -9,6 +9,7 @@ use core::{
 };
 use parity_scale_codec::{Decode, Encode};
 use serde::Deserialize;
+use core::ops::Deref;
 // use ursa::{
 //     blake2::{
 //         digest::{Input, VariableOutput},
@@ -38,6 +39,14 @@ pub struct KeyPair {
 )]
 pub struct PublicKey {
     inner: [u8; 32],
+}
+
+impl Deref for PublicKey {
+    type Target = [u8; 32];
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl TryFrom<Vec<u8>> for PublicKey {

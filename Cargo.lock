@@ -2430,7 +2430,9 @@ dependencies = [
  "heim",
  "hex-literal",
  "iroha_derive",
+ "iroha_logger",
  "iroha_network",
+ "log 0.4.8",
  "parity-scale-codec",
  "rand 0.7.3",
  "rand_chacha 0.2.1",
@@ -2452,7 +2454,9 @@ dependencies = [
  "futures 0.3.5",
  "iroha",
  "iroha_derive",
+ "iroha_logger",
  "iroha_network",
+ "log 0.4.8",
  "serde",
  "serde_json 1.0.56",
  "tempfile",
@@ -2480,16 +2484,30 @@ dependencies = [
  "chrono",
  "parity-scale-codec",
  "serde_json 1.0.44",
+ "tempfile",
 ]
 
 [[package]]
 name = "iroha_derive"
 version = "0.1.0"
 dependencies = [
+ "iroha_logger",
  "iroha_macro",
+ "log 0.4.8",
  "parity-scale-codec",
  "quote 1.0.7",
  "syn 1.0.33",
+]
+
+[[package]]
+name = "iroha_logger"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lazy_static",
+ "log 0.4.8",
+ "serde",
+ "serde_json 1.0.56",
 ]
 
 [[package]]
@@ -2505,6 +2523,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "iroha_derive",
+ "log 0.4.8",
  "parity-scale-codec",
 ]
 
@@ -3167,6 +3186,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
 dependencies = [
  "cfg-if",
+ "serde",
 ]
 
 [[package]]

@@ -18,6 +18,7 @@ pub mod peer;
 pub mod permission;
 pub mod query;
 pub mod tx;
+pub mod block;
 
 pub mod prelude {
     #[doc(inline)]

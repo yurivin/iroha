@@ -20,6 +20,7 @@ use iroha_network::mock::prelude::*;
 use iroha_network::prelude::*;
 use std::{convert::TryFrom, fmt::Debug, sync::Arc};
 use std::future::Future;
+use crate::block_sync::message::Message;
 
 /// Main network handler and the only entrypoint of the Iroha.
 pub struct Torii {
@@ -81,21 +82,31 @@ impl Torii {
 
     async fn http_listen(
         state: State<ToriiState>,
-        // mut handler: H,
     ) -> Result<(), String>
-        // where
-        //     H: FnMut(State<S>, Request) -> F,
-        //     F: Future<Output = Result<Response, String>>,
     {
         use warp::Filter;
         use bytes::Bytes;
         // type Bytes = Vec<u8>;
+        // let instruction = warp::post()
+        //     .and(warp::path("instruction"))
+        //     .and(warp::body::bytes())
+        //     .map(move |bytes: Bytes| {
+        //         println!("rcvd: {:?}", bytes);
+        //         let request = Request::new("/instruction".into(), bytes.to_vec());
+        //         let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
+        //         if let Response::Ok(data) = resp {
+        //             data
+        //         } else {
+        //             vec![]
+        //         }
+        //     });
         let route = warp::post()
-            .and(warp::path("instruction"))
+            .and(warp::path::param())
+            // .and(warp::path("block"))
             .and(warp::body::bytes())
-            .map(move |bytes: Bytes| {
+            .map(move |path: String, bytes: Bytes| {
                 println!("rcvd: {:?}", bytes);
-                let request = Request::new("/instruction".into(), bytes.to_vec());
+                let request = Request::new(format!("/{}", path), bytes.to_vec());
                 let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
                 if let Response::Ok(data) = resp {
                     data
@@ -106,22 +117,6 @@ impl Torii {
         warp::serve(route)
             .run(([127, 0, 0, 1], 7878))
             .await;
-
-        // use simple_server::{Server, Method, StatusCode};
-        // let server = Server::new(move |request, mut response| {
-        //     match (request.method(), request.uri().path()) {
-        //         (&Method::POST, "/instruction") => {
-        //
-        //         }
-        //         (_, _) => {
-        //             response.status(StatusCode::NOT_FOUND);
-        //             Ok(response.body("Not found".as_bytes().to_vec())?)
-        //         }
-        //     }
-        // });
-        // let host = "127.0.0.1";
-        // let port = "7878";
-        // server.listen(host, port);
         Ok(())
     }
 
@@ -143,14 +138,18 @@ impl Torii {
             events_sender: self.events_sender.clone(),
         };
         let state = Arc::new(RwLock::new(state));
-        // let (handle_requests_result, handle_connects_result, _event_consumer_result) = futures::join!(
-        //     Network::listen(state.clone(), &self.url, handle_requests),
-        //     Network::listen(state.clone(), &self.connect_url, handle_connections),
-        //     consume_events(self.events_receiver.clone(), connections)
-        // );
-        // handle_requests_result?;
-        // handle_connects_result?;
-        tokio::runtime::Runtime::new().unwrap().block_on(Self::http_listen(state.clone())).unwrap();
+        let s = state.clone();
+        let jh = std::thread::spawn(move || {
+            tokio::runtime::Runtime::new().unwrap().block_on(Self::http_listen(s)).unwrap();
+        });
+        let (handle_requests_result, handle_connects_result, _event_consumer_result) = futures::join!(
+            Network::listen(state.clone(), &self.url, handle_requests),
+            Network::listen(state.clone(), &self.connect_url, handle_connections),
+            consume_events(self.events_receiver.clone(), connections)
+        );
+        handle_requests_result?;
+        handle_connects_result?;
+        // jh.join();
         Ok(())
     }
 }
@@ -222,16 +221,23 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
     match request.url() {
         uri::INSTRUCTIONS_URI => match RequestedTransaction::try_from(request.payload().to_vec()) {
             Ok(transaction) => {
-                if let Err(e) = state
+                // if let Err(e) = state
+                //     .write()
+                //     .await
+                //     .events_sender
+                //     .send(Occurrence::Created(Entity::Transaction(Vec::from(
+                //         &transaction,
+                //     ))))
+                // {
+                //     log::error!("Failed to send event - channel is full: {}", e);
+                // }
+                state
                     .write()
                     .await
                     .events_sender
-                    .try_send(Occurrence::Created(Entity::Transaction(Vec::from(
+                    .send(Occurrence::Created(Entity::Transaction(Vec::from(
                         &transaction,
-                    ))))
-                {
-                    log::error!("Failed to send event - channel is full: {}", e);
-                }
+                    )))).await;
                 let transaction = transaction.accept()?;
                 let payload = Vec::from(&transaction);
                 state
@@ -242,14 +248,11 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                     .await
                     .send(transaction)
                     .await;
-                if let Err(e) = state
+                state
                     .write()
                     .await
                     .events_sender
-                    .try_send(Occurrence::Updated(Entity::Transaction(payload)))
-                {
-                    log::error!("Failed to send event - channel is full: {}", e);
-                }
+                    .send(Occurrence::Updated(Entity::Transaction(payload))).await;
                 Ok(Response::empty_ok())
             }
             Err(e) => {
@@ -303,15 +306,49 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
         },
         uri::BLOCK_SYNC_URI => match BlockSyncMessage::try_from(request.payload().to_vec()) {
             Ok(message) => {
-                state
-                    .write()
-                    .await
-                    .block_sync_message_sender
-                    .write()
-                    .await
-                    .send(message)
-                    .await;
-                Ok(Response::empty_ok())
+                println!("block sync!");
+                // state
+                //     .write()
+                //     .await
+                //     .block_sync_message_sender
+                //     .write()
+                //     .await
+                //     .send(message.clone())
+                //     .await;
+                // Ok(Response::empty_ok())
+                let pk = &PublicKey::default();
+                let s = state.read().await;
+                let wsv = s.world_state_view.read().await;
+                let mut blocks = wsv.blocks.iter().map(|x| ValidBlock {
+                    header: x.header.clone(),
+                    transactions: x.transactions.clone(),
+                    signatures: x.signatures.clone()
+                });
+                use parity_scale_codec::Encode;
+                match message {
+                    Message::LatestBlock(_, _) => {
+                        let v = if let Some(lst) = blocks.last() {
+                            vec![lst]
+                        } else {
+                            vec![]
+                        };
+                        Ok(Response::Ok(Message::ShareBlocks(v, PeerId::new("", pk)).encode()))
+                    },
+                    Message::GetBlocksAfter(h, _) => {
+                        let from_pos =
+                            blocks
+                            .position(|block| block.header.previous_block_hash == h).unwrap_or(0);
+                        if blocks.size_hint().1.unwrap() > from_pos {
+                            Ok(Response::Ok(Message::ShareBlocks(blocks.collect(), PeerId::new("", pk)).encode()))
+                        } else {
+                            eprintln!("Block not found");
+                            Ok(Response::InternalError)
+                        }
+                    },
+                    Message::ShareBlocks(_, _) => {
+                        Ok(Response::InternalError)
+                    },
+                }
             }
             Err(e) => {
                 log::error!("Failed to decode peer message: {}", e);
