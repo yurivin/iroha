@@ -161,3 +161,10 @@ impl From<SignedTransaction> for RequestedTransaction {
         }
     }
 }
+
+/// `ValidTransaction` represents trustfull Transaction state.
+#[derive(Clone, Debug, Encode, Decode)]
+pub struct ValidTransaction {
+    payload: Payload,
+    signatures: Vec<Signature>,
+}

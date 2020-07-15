@@ -22,15 +22,15 @@ pub struct RequestedTransaction {
 }
 
 #[derive(Clone, Debug, Io, Encode, Decode)]
-struct Payload {
+pub struct Payload {
     /// Account ID of transaction creator.
-    account_id: <Account as Identifiable>::Id,
+    pub account_id: <Account as Identifiable>::Id,
     /// An ordered set of instructions.
-    instructions: Vec<Instruction>,
+    pub instructions: Vec<Instruction>,
     /// Time of creation (unix time, in milliseconds).
-    creation_time: u64,
+pub    creation_time: u64,
     /// The transaction will be dropped after this time if it is still in a `Queue`.
-    time_to_live_ms: u64,
+pub     time_to_live_ms: u64,
 }
 // 88   dc   34  17 d5058ec4b4503e0c12ea1a0a89be200fe98922423d4334014fa6b0ee
 // 207, 157, 30, 3
@@ -81,8 +81,8 @@ impl RequestedTransaction {
 /// with `Iroha` subsystems.
 #[derive(Clone, Debug, Io, Encode, Decode)]
 pub struct AcceptedTransaction {
-    payload: Payload,
-    signatures: Vec<Signature>,
+    pub payload: Payload,
+    pub(crate) signatures: Vec<Signature>,
 }
 
 impl AcceptedTransaction {
