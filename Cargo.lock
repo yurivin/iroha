@@ -719,6 +719,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "collateral"
+version = "2.0.0-rc.4"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "x-core",
+]
+
+[[package]]
 name = "const-random"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3586,6 +3601,7 @@ dependencies = [
 name = "node-template-runtime"
 version = "2.0.0-rc4"
 dependencies = [
+ "collateral",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -3843,6 +3859,7 @@ name = "pallet-template"
 version = "2.0.0-rc4"
 dependencies = [
  "alt_serde",
+ "collateral",
  "frame-support",
  "frame-system",
  "iroha_client_no_std",
@@ -8140,6 +8157,15 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "x-core"
+version = "2.0.0-rc.4"
+dependencies = [
+ "frame-support",
+ "parity-scale-codec",
+ "sp-std",
 ]
 
 [[package]]

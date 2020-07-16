@@ -1,6 +1,7 @@
 //! This module contains incoming requests handling logic of Iroha.
 //! `Torii` is used to receive, accept and route incoming instructions, queries and messages.
 
+use crate::block_sync::message::Message;
 use crate::{
     block_sync::message::Message as BlockSyncMessage,
     event::{
@@ -18,9 +19,8 @@ use iroha_derive::*;
 use iroha_network::mock::prelude::*;
 #[cfg(not(feature = "mock"))]
 use iroha_network::prelude::*;
-use std::{convert::TryFrom, fmt::Debug, sync::Arc};
 use std::future::Future;
-use crate::block_sync::message::Message;
+use std::{convert::TryFrom, fmt::Debug, sync::Arc};
 
 /// Main network handler and the only entrypoint of the Iroha.
 pub struct Torii {
@@ -80,12 +80,9 @@ impl Torii {
         )
     }
 
-    async fn http_listen(
-        state: State<ToriiState>,
-    ) -> Result<(), String>
-    {
-        use warp::Filter;
+    async fn http_listen(state: State<ToriiState>) -> Result<(), String> {
         use bytes::Bytes;
+        use warp::Filter;
         // type Bytes = Vec<u8>;
         // let instruction = warp::post()
         //     .and(warp::path("instruction"))
@@ -114,9 +111,7 @@ impl Torii {
                     vec![]
                 }
             });
-        warp::serve(route)
-            .run(([127, 0, 0, 1], 7878))
-            .await;
+        warp::serve(route).run(([127, 0, 0, 1], 7878)).await;
         Ok(())
     }
 
@@ -140,7 +135,10 @@ impl Torii {
         let state = Arc::new(RwLock::new(state));
         let s = state.clone();
         let jh = std::thread::spawn(move || {
-            tokio::runtime::Runtime::new().unwrap().block_on(Self::http_listen(s)).unwrap();
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(Self::http_listen(s))
+                .unwrap();
         });
         let (handle_requests_result, handle_connects_result, _event_consumer_result) = futures::join!(
             Network::listen(state.clone(), &self.url, handle_requests),
@@ -237,7 +235,8 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                     .events_sender
                     .send(Occurrence::Created(Entity::Transaction(Vec::from(
                         &transaction,
-                    )))).await;
+                    ))))
+                    .await;
                 let transaction = transaction.accept()?;
                 let payload = Vec::from(&transaction);
                 state
@@ -252,7 +251,8 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                     .write()
                     .await
                     .events_sender
-                    .send(Occurrence::Updated(Entity::Transaction(payload))).await;
+                    .send(Occurrence::Updated(Entity::Transaction(payload)))
+                    .await;
                 Ok(Response::empty_ok())
             }
             Err(e) => {
@@ -322,7 +322,7 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                 let mut blocks = wsv.blocks.iter().map(|x| ValidBlock {
                     header: x.header.clone(),
                     transactions: x.transactions.clone(),
-                    signatures: x.signatures.clone()
+                    signatures: x.signatures.clone(),
                 });
                 use parity_scale_codec::Encode;
                 match message {
@@ -332,22 +332,25 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                         } else {
                             vec![]
                         };
-                        Ok(Response::Ok(Message::ShareBlocks(v, PeerId::new("", pk)).encode()))
-                    },
+                        Ok(Response::Ok(
+                            Message::ShareBlocks(v, PeerId::new("", pk)).encode(),
+                        ))
+                    }
                     Message::GetBlocksAfter(h, _) => {
-                        let from_pos =
-                            blocks
-                            .position(|block| block.header.previous_block_hash == h).unwrap_or(0);
+                        let from_pos = blocks
+                            .position(|block| block.header.previous_block_hash == h)
+                            .unwrap_or(0);
                         if blocks.size_hint().1.unwrap() > from_pos {
-                            Ok(Response::Ok(Message::ShareBlocks(blocks.collect(), PeerId::new("", pk)).encode()))
+                            Ok(Response::Ok(
+                                Message::ShareBlocks(blocks.collect(), PeerId::new("", pk))
+                                    .encode(),
+                            ))
                         } else {
                             eprintln!("Block not found");
                             Ok(Response::InternalError)
                         }
-                    },
-                    Message::ShareBlocks(_, _) => {
-                        Ok(Response::InternalError)
-                    },
+                    }
+                    Message::ShareBlocks(_, _) => Ok(Response::InternalError),
                 }
             }
             Err(e) => {
