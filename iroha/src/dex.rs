@@ -188,7 +188,7 @@ pub mod isi {
             let domain_name = self.destination_id;
             world_state_view
                 .read_account(&dex.owner_account_id)
-                .ok_or("Account not found.")?;
+                .ok_or("account not found")?;
             let domain = world_state_view
                 .peer()
                 .domains
@@ -237,7 +237,6 @@ pub mod isi {
             PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let domain_name = self.destination_id.domain_name;
             let token_pair = self.object;
-            // Get domain
             let domain = world_state_view
                 .domain(&domain_name)
                 .ok_or("domain not found")?;
@@ -270,7 +269,6 @@ pub mod isi {
             if base_asset_definition.name == target_asset_definition.name {
                 return Err("assets in token pair must be different".to_owned());
             }
-            // TODO: add check for owner account existence
             let dex = domain
                 .dex
                 .as_mut()
@@ -343,11 +341,10 @@ pub mod isi {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::dex::query::{
-            query_dex_list, query_token_pair, query_token_pair_count, query_token_pair_list,
-        };
+        use crate::dex::query::*;
         use crate::peer::PeerId;
         use crate::permission::{permission_asset_definition_id, Permission};
+        use crate::query::QueryResult;
         use std::collections::BTreeMap;
 
         struct TestKit {
@@ -385,15 +382,8 @@ pub mod isi {
                     asset_definitions,
                     ..Default::default()
                 };
-                let dex_domain = Domain {
-                    name: DEX_DOMAIN_NAME.to_owned(),
-                    accounts: BTreeMap::new(),
-                    asset_definitions: BTreeMap::new(),
-                    ..Default::default()
-                };
                 let mut domains = BTreeMap::new();
                 domains.insert(domain_name.clone(), domain);
-                domains.insert(DEX_DOMAIN_NAME.to_owned(), dex_domain);
                 let address = "127.0.0.1:8080".to_string();
                 let world_state_view = WorldStateView::new(Peer::with_domains(
                     PeerId {
@@ -417,8 +407,9 @@ pub mod isi {
             let dex_owner_public_key = KeyPair::generate()
                 .expect("Failed to generate KeyPair.")
                 .public_key;
+            let domain_name = Name::from("Company");
             let mut dex_owner_account =
-                Account::with_signatory("dex_owner", "dex", dex_owner_public_key);
+                Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
 
             // create permissions to operate any dex
             let asset_definition = permission_asset_definition_id();
@@ -426,7 +417,6 @@ pub mod isi {
                 definition_id: asset_definition,
                 account_id: dex_owner_account.id.clone(),
             };
-            let domain_name = Name::from("Company");
             let manage_dex_permission =
                 Asset::with_permission(asset_id.clone(), Permission::ManageDEX);
             dex_owner_account
@@ -436,10 +426,9 @@ pub mod isi {
             // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
             let domain = world_state_view
-                .peer()
-                .domains
-                .get_mut(DEX_DOMAIN_NAME)
-                .unwrap();
+                .domain(&domain_name)
+                .expect("domain not found")
+                .clone();
 
             // register dex owner account
             let register_account = domain.register_account(dex_owner_account.clone());
@@ -456,8 +445,15 @@ pub mod isi {
                 .expect("query dex failed");
             assert_eq!(&dex_query_result.id.domain_name, &domain_name);
 
-            let list_query_result = query_dex_list(world_state_view).collect::<Vec<_>>();
-            assert_eq!(&list_query_result, &[dex_query_result]);
+            if let QueryResult::GetDEXList(dex_list_result) = GetDEXList::build_request()
+                .query
+                .execute(world_state_view)
+                .expect("failed to query dex list")
+            {
+                assert_eq!(&dex_list_result.dex_list, &[dex_query_result.clone()])
+            } else {
+                panic!("wrong enum variant returned for GetDEXList");
+            }
         }
 
         #[test]
@@ -467,17 +463,16 @@ pub mod isi {
             let dex_owner_public_key = KeyPair::generate()
                 .expect("Failed to generate KeyPair.")
                 .public_key;
-            let dex_owner_account =
-                Account::with_signatory("dex_owner", "dex", dex_owner_public_key);
             let domain_name = Name::from("Company");
+            let dex_owner_account =
+                Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
 
             // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
             let domain = world_state_view
-                .peer()
-                .domains
-                .get_mut(DEX_DOMAIN_NAME)
-                .unwrap();
+                .domain(&domain_name)
+                .expect("domain not found")
+                .clone();
 
             // register dex owner account
             let register_account = domain.register_account(dex_owner_account.clone());
@@ -494,7 +489,7 @@ pub mod isi {
                     world_state_view
                 ).unwrap_err(),
                 format!("Error: Permission not found., CanManageDEX(Id {{ name: \"{}\", domain_name: \"{}\" }})",
-                        "dex_owner", DEX_DOMAIN_NAME)
+                        "dex_owner", &domain_name)
             );
         }
 
@@ -505,8 +500,9 @@ pub mod isi {
             let dex_owner_public_key = KeyPair::generate()
                 .expect("Failed to generate KeyPair.")
                 .public_key;
+            let domain_name = Name::from("Company");
             let mut dex_owner_account =
-                Account::with_signatory("dex_owner", "dex", dex_owner_public_key);
+                Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
 
             // create permissions to operate any dex
             let asset_definition = permission_asset_definition_id();
@@ -514,7 +510,6 @@ pub mod isi {
                 definition_id: asset_definition,
                 account_id: dex_owner_account.id.clone(),
             };
-            let domain_name = Name::from("Company");
             let manage_dex_permission =
                 Asset::with_permission(asset_id.clone(), Permission::ManageDEX);
             dex_owner_account
@@ -522,35 +517,33 @@ pub mod isi {
                 .insert(asset_id.clone(), manage_dex_permission);
 
             // get world state view and dex domain
-            let mut world_state_view = &mut testkit.world_state_view;
+            let world_state_view = &mut testkit.world_state_view;
             let domain = world_state_view
-                .peer()
-                .domains
-                .get_mut(DEX_DOMAIN_NAME)
-                .unwrap()
+                .read_domain(&domain_name)
+                .expect("domain not found")
                 .clone();
 
             // register dex owner account
             let register_account = domain.register_account(dex_owner_account.clone());
             register_account
-                .execute(testkit.root_account_id.clone(), &mut world_state_view)
+                .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register dex owner account");
 
             // initialize dex in domain
             initialize_dex(&domain_name, dex_owner_account.id.clone())
-                .execute(dex_owner_account.id.clone(), &mut world_state_view)
+                .execute(dex_owner_account.id.clone(), world_state_view)
                 .expect("failed to initialize dex");
 
             // register assets in domain
-            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("A", "Company"));
+            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("XOR", "Company"));
             domain
                 .register_asset(asset_definition_a.clone())
-                .execute(testkit.root_account_id.clone(), &mut world_state_view)
+                .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register asset");
-            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("B", "Company"));
+            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("DOT", "Company"));
             domain
                 .register_asset(asset_definition_b.clone())
-                .execute(testkit.root_account_id.clone(), &mut world_state_view)
+                .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register asset");
 
             create_token_pair(
@@ -570,10 +563,19 @@ pub mod isi {
                 .expect("failed to query token pair");
             assert_eq!(&token_pair_id, &token_pair.id);
 
-            let token_pair_list = query_token_pair_list(&domain_name, world_state_view)
-                .expect("failed to query token pair list")
-                .collect::<Vec<_>>();
-            assert_eq!(&token_pair_list, &[token_pair]);
+            if let QueryResult::GetTokenPairList(token_pair_list_result) =
+                GetTokenPairList::build_request(domain_name.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair list")
+            {
+                assert_eq!(
+                    &token_pair_list_result.token_pair_list,
+                    &[token_pair.clone()]
+                )
+            } else {
+                panic!("wrong enum variant returned for GetTokenPairList");
+            }
 
             let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
                 .expect("failed to query token pair count");
@@ -583,10 +585,16 @@ pub mod isi {
                 .execute(dex_owner_account.id.clone(), world_state_view)
                 .expect("remove token pair failed");
 
-            let token_pair_list = query_token_pair_list(&domain_name, world_state_view)
-                .expect("failed to query token pair list")
-                .collect::<Vec<_>>();
-            assert!(&token_pair_list.is_empty());
+            if let QueryResult::GetTokenPairList(token_pair_list_result) =
+                GetTokenPairList::build_request(domain_name.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair list")
+            {
+                assert!(&token_pair_list_result.token_pair_list.is_empty());
+            } else {
+                panic!("wrong enum variant returned for GetTokenPairList");
+            }
 
             let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
                 .expect("failed to query token pair count");
@@ -616,7 +624,7 @@ pub mod wsv {
 /// Query module provides functions for performing dex-related queries.
 pub mod query {
     use super::*;
-    use crate::query::IrohaQuery;
+    use crate::query::*;
     use iroha_derive::*;
     use std::time::SystemTime;
 
@@ -698,17 +706,52 @@ pub mod query {
     impl Query for GetTokenPairList {
         #[log]
         fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
-            let token_pair_list = query_token_pair_list(&self.domain_name, world_state_view)
+            let mut token_pair_list = query_token_pair_list(&self.domain_name, world_state_view)
                 .ok_or(format!(
                     "No domain with name: {:?} found in the current world state: {:?}",
                     &self.domain_name, world_state_view
                 ))?
                 .cloned()
-                .collect();
+                .collect::<Vec<_>>();
+            // Add indirect Token Pairs through base asset
+            let target_assets = token_pair_list
+                .iter()
+                .map(|token_pair| token_pair.id.target_asset.clone())
+                .collect::<Vec<_>>();
+            for token_pair in
+                get_permuted_pairs(&target_assets)
+                    .iter()
+                    .map(|(base_asset, target_asset)| {
+                        TokenPair::new(
+                            DEXId::new(&base_asset.domain_name),
+                            base_asset.clone(),
+                            target_asset.clone(),
+                            0,
+                            0,
+                        )
+                    })
+            {
+                token_pair_list.push(token_pair);
+            }
             Ok(QueryResult::GetTokenPairList(GetTokenPairListResult {
                 token_pair_list,
             }))
         }
+    }
+
+    /// This function returns all combinations of two elements from given sequence.
+    /// Combinations are unique without ordering in pairs, i.e. (A,B) and (B,A) considered the same.
+    fn get_permuted_pairs<T: Clone>(sequence: &[T]) -> Vec<(T, T)> {
+        let mut result = Vec::new();
+        for i in 0..sequence.len() {
+            for j in i + 1..sequence.len() {
+                result.push((
+                    sequence.get(i).unwrap().clone(),
+                    sequence.get(j).unwrap().clone(),
+                ));
+            }
+        }
+        result
     }
 
     /// A query to get a particular `TokenPair` identified by its id.
