@@ -1,13 +1,13 @@
 //! This module contains `Block` structures for each state, it's transitions, implementations and related traits
 //! implementations.
 
+use crate::tx::ValidTransaction;
 use crate::{
-    crypto::{self, KeyPair, Signatures, Hash},
+    crypto::{self, Hash, KeyPair, Signatures},
     prelude::*,
 };
-use parity_scale_codec::{Decode, Encode};
 use alloc::vec::Vec;
-use crate::tx::ValidTransaction;
+use parity_scale_codec::{Decode, Encode};
 
 /// Message's variants that are used by peers to communicate in the process of consensus.
 #[derive(Decode, Encode, Debug, Clone)]

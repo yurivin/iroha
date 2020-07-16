@@ -27,6 +27,9 @@ pub mod torii;
 pub mod tx;
 pub mod wsv;
 
+use crate::domain::isi::DomainInstruction;
+use crate::peer::isi::PeerInstruction;
+use crate::tx::Payload;
 use crate::{
     block_sync::{message::Message as BlockSyncMessage, BlockSynchronizer},
     config::Configuration,
@@ -44,11 +47,8 @@ use async_std::{
     sync::{self, Receiver, RwLock, Sender},
     task,
 };
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
-use crate::domain::isi::DomainInstruction;
-use crate::peer::isi::PeerInstruction;
-use crate::tx::Payload;
 use std::time::SystemTime;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 /// The interval at which sumeragi checks if there are tx in the `queue`.
 pub const TX_RETRIEVAL_INTERVAL: Duration = Duration::from_millis(100);
@@ -147,11 +147,14 @@ impl Iroha {
         let cfg = config.clone();
         task::spawn(async move {
             task::sleep(Duration::from_secs(20)).await;
-            let isi = Instruction::Peer(PeerInstruction::AddDomain("saf".into(), PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key)));
+            let isi = Instruction::Peer(PeerInstruction::AddDomain(
+                "saf".into(),
+                PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key),
+            ));
             let (pk, sk) = cfg.key_pair();
             let kp = KeyPair {
                 public_key: pk,
-                private_key: sk
+                private_key: sk,
             };
             let payload = Payload {
                 instructions: vec![isi],
@@ -165,9 +168,7 @@ impl Iroha {
             let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
             let tx = AcceptedTransaction {
                 payload,
-                signatures: vec![
-                    sig
-                ]
+                signatures: vec![sig],
             };
             tx_sender.send(tx).await;
         });

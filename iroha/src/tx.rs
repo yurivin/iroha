@@ -28,9 +28,9 @@ pub struct Payload {
     /// An ordered set of instructions.
     pub instructions: Vec<Instruction>,
     /// Time of creation (unix time, in milliseconds).
-pub    creation_time: u64,
+    pub creation_time: u64,
     /// The transaction will be dropped after this time if it is still in a `Queue`.
-pub     time_to_live_ms: u64,
+    pub time_to_live_ms: u64,
 }
 // 88   dc   34  17 d5058ec4b4503e0c12ea1a0a89be200fe98922423d4334014fa6b0ee
 // 207, 157, 30, 3

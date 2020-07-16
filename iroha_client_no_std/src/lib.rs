@@ -11,6 +11,7 @@ pub mod torii;
 // TODO(vmarkushin): update documentation for the client-side entities (IR-848).
 pub mod account;
 pub mod asset;
+pub mod block;
 pub mod domain;
 pub mod event;
 pub mod isi;
@@ -18,7 +19,6 @@ pub mod peer;
 pub mod permission;
 pub mod query;
 pub mod tx;
-pub mod block;
 
 pub mod prelude {
     #[doc(inline)]

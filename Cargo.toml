@@ -13,5 +13,7 @@ members = [
 #  "iroha_substrate/parachain/runtime/collator",
   "iroha_substrate/substrate-node-template/node",
   "iroha_substrate/substrate-node-template/pallets/template",
+  "iroha_substrate/substrate-node-template/pallets/collateral",
+  "iroha_substrate/substrate-node-template/pallets/x-core",
   "iroha_substrate/substrate-node-template/runtime",
 ]
