@@ -1098,7 +1098,7 @@ mod maintenance {
     use async_std::prelude::*;
     use clap::ArgMatches;
     use futures::executor;
-    use iroha_client::{client::Client, config::Configuration};
+    use iroha_client::{client::Client, config::Configuration, prelude::*};
 
     const CONNECT: &str = "connect";
     const ENTITY_TYPE: &str = "entity";
@@ -1135,32 +1135,28 @@ mod maintenance {
                 println!("Connecting to consume events for: {}", entity_type);
                 if let Some(event_type) = matches.value_of(EVENT_TYPE) {
                     println!("Connecting to consume events: {}", event_type);
-                    connect(entity_type, event_type);
+                    if let Err(err) = connect(entity_type, event_type) {
+                        eprintln!("Failed to connect: {}", err)
+                    }
                 }
             }
         }
     }
 
-    fn connect(entity_type: &str, _event_type: &str) {
-        let mut iroha_client = Client::with_maintenance(
-            &Configuration::from_path("config.json").expect("Failed to load configuration."),
-        );
+    fn connect(entity_type: &str, event_type: &str) -> Result<(), String> {
+        let mut iroha_client = Client::with_maintenance(&Configuration::from_path("config.json")?);
+        let event_type: OccurrenceType = event_type.parse()?;
+        let entity_type: EntityType = entity_type.parse()?;
         executor::block_on(async {
-            match entity_type {
-                "transaction" => {
-                    let mut stream = iroha_client
-                        .subscribe_to_transaction_changes()
-                        .await
-                        .expect("Failed to execute request.");
-                    while let Some(change) = stream.next().await {
-                        println!("Change received {:?}", change);
-                    }
-                }
-                &_ => {
-                    eprintln!("Failed to match Entity Type: {}", entity_type);
-                }
+            let mut stream = iroha_client
+                .subscribe_to_changes(event_type, entity_type)
+                .await
+                .expect("Failed to execute request.");
+            while let Some(change) = stream.next().await {
+                println!("Change received {:?}", change);
             }
         });
+        Ok(())
     }
 
     #[cfg(test)]
@@ -1168,15 +1164,14 @@ mod maintenance {
         use async_std::task;
         use iroha::{config::Configuration, isi, prelude::*};
         use iroha_client::{client::Client, config::Configuration as ClientConfiguration};
-        use std::{thread, time::Duration};
+        use std::time::Duration;
         use tempfile::TempDir;
 
         const CONFIGURATION_PATH: &str = "tests/test_config.json";
 
         #[async_std::test]
-        #[ignore]
         async fn cli_connect_to_consume_block_changes_should_work() {
-            thread::spawn(|| {
+            task::spawn(async {
                 let temp_dir = TempDir::new().expect("Failed to create TempDir.");
                 let mut configuration = Configuration::from_path(CONFIGURATION_PATH)
                     .expect("Failed to load configuration.");
@@ -1184,13 +1179,16 @@ mod maintenance {
                     .kura_configuration
                     .kura_block_store_path(temp_dir.path());
                 let iroha = Iroha::new(configuration.clone());
-                task::block_on(iroha.start()).expect("Failed to start Iroha.");
+                iroha.start().await.expect("Failed to start Iroha.");
                 //Prevents temp_dir from clean up untill the end of the tests.
                 #[allow(clippy::empty_loop)]
                 loop {}
             });
-            thread::sleep(Duration::from_millis(300));
-            super::connect("transaction", "all");
+            task::sleep(Duration::from_millis(300)).await;
+            let connection_future = async_std::future::timeout(
+                Duration::from_millis(300),
+                task::spawn(async { super::connect("transaction", "all") }),
+            );
             let domain_name = "global";
             let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
             let create_asset = isi::Register {
@@ -1201,8 +1199,13 @@ mod maintenance {
                 &Configuration::from_path(CONFIGURATION_PATH)
                     .expect("Failed to load configuration."),
             ));
-            task::block_on(iroha_client.submit(create_asset.into()))
+            iroha_client
+                .submit(create_asset.into())
+                .await
                 .expect("Failed to prepare state.");
+            if let Ok(result) = connection_future.await {
+                result.expect("Failed to connect.")
+            }
         }
     }
 }
