@@ -1,6 +1,6 @@
 //! This module contains query related Iroha functionality.
 
-use crate::{account, asset, dex, prelude::*};
+use crate::{account, asset, domain, dex, prelude::*};
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
 
@@ -20,8 +20,12 @@ pub struct QueryRequest {
 pub enum IrohaQuery {
     /// Query all Assets related to the Account.
     GetAccountAssets(asset::query::GetAccountAssets),
+    /// Query all Assets with defined Definition related to the Account.
+    GetAccountAssetsWithDefinition(asset::query::GetAccountAssetsWithDefinition),
     /// Query Account information.
     GetAccount(account::query::GetAccount),
+    /// Query Domain information.
+    GetDomain(domain::query::GetDomain),
     /// Query DEX information.
     GetDEX(dex::query::GetDEX),
     /// Query all active DEX in the network.
@@ -51,8 +55,12 @@ pub enum IrohaQuery {
 pub enum QueryResult {
     /// Query all Assets related to the Account result.
     GetAccountAssets(asset::query::GetAccountAssetsResult),
+    /// Query all Assets with defined Definition related to the Account.
+    GetAccountAssetsWithDefinition(asset::query::GetAccountAssetsWithDefinitionResult),
     /// Query Account information result.
     GetAccount(account::query::GetAccountResult),
+    /// Query Domain information.
+    GetDomain(domain::query::GetDomainResult),
     /// Query DEX information.
     GetDEX(dex::query::GetDEXResult),
     /// Query all active DEX in the network result.
@@ -84,7 +92,9 @@ impl IrohaQuery {
     pub fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
         match self {
             IrohaQuery::GetAccountAssets(query) => query.execute(world_state_view),
+            IrohaQuery::GetAccountAssetsWithDefinition(query) => query.execute(world_state_view),
             IrohaQuery::GetAccount(query) => query.execute(world_state_view),
+            IrohaQuery::GetDomain(query) => query.execute(world_state_view),
             IrohaQuery::GetDEX(query) => query.execute(world_state_view),
             IrohaQuery::GetDEXList(query) => query.execute(world_state_view),
             IrohaQuery::GetTokenPair(query) => query.execute(world_state_view),
