@@ -27,6 +27,7 @@ pub mod torii;
 pub mod tx;
 pub mod wsv;
 
+use crate::bridge::asset::ExternalAsset;
 use crate::domain::isi::DomainInstruction;
 use crate::peer::isi::PeerInstruction;
 use crate::tx::Payload;
@@ -104,30 +105,77 @@ impl Iroha {
         let (events_sender, events_receiver) = sync::channel(100);
         let domain_name = "global".to_string();
         let mut asset_definitions = BTreeMap::new();
-        let asset_definition_id = permission::permission_asset_definition_id();
+        let permission_asset_definition_id = permission::permission_asset_definition_id();
         asset_definitions.insert(
-            asset_definition_id.clone(),
-            AssetDefinition::new(asset_definition_id.clone()),
+            permission_asset_definition_id.clone(),
+            AssetDefinition::new(permission_asset_definition_id.clone()),
         );
         let account_id = AccountId::new("root", &domain_name);
         let asset_id = AssetId {
-            definition_id: asset_definition_id,
+            definition_id: permission_asset_definition_id.clone(),
             account_id: account_id.clone(),
         };
         let asset = Asset::with_permission(asset_id.clone(), Permission::Anything);
-        println!("PK: {:?}", config.public_key);
-        println!("SK: {:?}", config.private_key);
+        println!("PK: {:?}", config.public_key.inner);
+        println!("SK: {:?}", config.private_key.inner);
         let mut account =
             Account::with_signatory(&account_id.name, &account_id.domain_name, config.public_key);
         account.assets.insert(asset_id, asset);
         let mut accounts = BTreeMap::new();
         accounts.insert(account_id.clone(), account);
+
+        let bridge_admin_account_id = AccountId::new("bridge_admin", &domain_name);
+        let bridge_admin_asset_id = AssetId {
+            definition_id: permission_asset_definition_id,
+            account_id: bridge_admin_account_id.clone(),
+        };
+        let bridge_permissions_asset =
+            Asset::with_permission(bridge_admin_asset_id.clone(), Permission::Anything);
+        let bpk = PublicKey { inner: [52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
+        let bsk = PrivateKey { inner: vec![250, 199, 149, 157, 191, 231, 47, 5, 46, 90, 12, 60, 141, 101, 48, 242, 2, 176, 47, 216, 249, 245, 202, 53, 128, 236, 141, 235, 119, 151, 71, 158,     52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
+        // println!("pk {:?}", bpk.inner);
+        // println!("sk {:?}", bsk.inner);
+
+        let mut bridge_admin_account = Account::with_signatory(
+            &bridge_admin_account_id.name,
+            &bridge_admin_account_id.domain_name,
+            bpk,
+        );
+        bridge_admin_account
+            .assets
+            .insert(bridge_admin_asset_id, bridge_permissions_asset);
+        accounts.insert(bridge_admin_account_id.clone(), bridge_admin_account);
         let domain = Domain {
             name: domain_name.clone(),
             accounts,
             asset_definitions,
         };
         let mut domains = BTreeMap::new();
+        {
+            let bridge_domain_name = "bridge".to_string();
+            let mut bridge_asset_definitions = BTreeMap::new();
+            let asset_definition_ids = [
+                bridge::bridges_asset_definition_id(),
+                bridge::bridge_asset_definition_id(),
+                bridge::bridge_external_assets_asset_definition_id(),
+                bridge::bridge_incoming_external_transactions_asset_definition_id(),
+                bridge::bridge_outgoing_external_transactions_asset_definition_id(),
+            ];
+            for asset_definition_id in &asset_definition_ids {
+                bridge_asset_definitions.insert(
+                    asset_definition_id.clone(),
+                    AssetDefinition::new(asset_definition_id.clone()),
+                );
+            }
+            let bridge_domain = Domain {
+                name: bridge_domain_name.clone(),
+                accounts: BTreeMap::new(),
+                asset_definitions: bridge_asset_definitions,
+            };
+            // domains.insert(domain_name, domain);
+            domains.insert(bridge_domain_name, bridge_domain);
+        }
+        let dmn = domain.clone();
         domains.insert(domain_name, domain);
         let world_state_view = Arc::new(RwLock::new(WorldStateView::new(Peer::with_domains(
             PeerId::new(&config.torii_configuration.torii_url, &config.public_key),
@@ -145,34 +193,86 @@ impl Iroha {
         );
         let tx_sender = transactions_sender.clone();
         let cfg = config.clone();
-        task::spawn(async move {
-            task::sleep(Duration::from_secs(20)).await;
-            let isi = Instruction::Peer(PeerInstruction::AddDomain(
-                "saf".into(),
-                PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key),
-            ));
-            let (pk, sk) = cfg.key_pair();
-            let kp = KeyPair {
-                public_key: pk,
-                private_key: sk,
-            };
-            let payload = Payload {
-                instructions: vec![isi],
-                account_id,
-                creation_time: SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Failed to get System Time.")
-                    .as_millis() as u64,
-                time_to_live_ms: 10000,
-            };
-            let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
-            let tx = AcceptedTransaction {
-                payload,
-                signatures: vec![sig],
-            };
-            tx_sender.send(tx).await;
-        });
-        println!("1");
+        // task::spawn(async move {
+        //     task::sleep(Duration::from_secs(5)).await;
+        //     let (pk, sk) = (bpk, bsk);
+        //     // let (pk, sk) = cfg.key_pair();
+        //     let peer_id = PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key);
+        //     // let isi = Instruction::Peer(PeerInstruction::AddDomain(
+        //     //     "saf".into(),
+        //     //     PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key),
+        //     // ));
+        //     let bridge_domain_name = "polkadot".to_string();
+        //     let bridge_def_id = BridgeDefinitionId {
+        //         name:  bridge_domain_name.clone(),
+        //     };
+        //     let bridge_def = BridgeDefinition {
+        //         id: bridge_def_id.clone(),
+        //         kind: BridgeKind::IClaim,
+        //         owner_account_id: bridge_admin_account_id.clone(),
+        //     };
+        //     let ext_asset = ExternalAsset {
+        //         bridge_id: BridgeId::new(&bridge_def_id.name),
+        //         name: "DOT".to_string(),
+        //         id: "DOT".to_string(),
+        //         decimals: 10,
+        //     };
+        //     let register_bridge = bridge::isi::register_bridge(peer_id, &bridge_def);
+        //     let register_client = bridge::isi::add_client(&bridge_def_id, pk.clone());
+        //     let dot_asset_def = AssetDefinition::new(AssetDefinitionId {
+        //         name: "DOT".to_string(),
+        //         domain_name:  bridge_domain_name.clone(),
+        //     });
+        //     let register_dot_asset = Register::new(dot_asset_def, bridge_domain_name.clone()).into();
+        //     let xor_asset_def = AssetDefinition::new(AssetDefinitionId {
+        //         name: "XOR".to_string(),
+        //         domain_name: "global".into(),
+        //     });
+        //     let register_xor_asset = Register::new(xor_asset_def.clone(), dmn.name.clone()).into();
+        //     let register_ext_asset = bridge::isi::register_external_asset(&ext_asset);
+        //     let mint_xor = Mint::new(
+        //         100u32,
+        //         AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
+        //     )
+        //     .into();
+        //     let bridge_account_id = AccountId::new("bridge", "polkadot");
+        //     let transfer_xor = Transfer::new(
+        //         account_id.clone(),
+        //         Asset::with_quantity(
+        //             AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
+        //             100,
+        //         ),
+        //         bridge_account_id.clone(),
+        //     )
+        //     .into();
+        //     let kp = KeyPair {
+        //         public_key: pk,
+        //         private_key: sk,
+        //     };
+        //     let payload = Payload {
+        //         instructions: vec![
+        //             register_xor_asset,
+        //             register_bridge,
+        //             register_client,
+        //             register_dot_asset,
+        //             register_ext_asset,
+        //             mint_xor,
+        //             transfer_xor,
+        //         ],
+        //         account_id: bridge_admin_account_id,
+        //         creation_time: SystemTime::now()
+        //             .duration_since(SystemTime::UNIX_EPOCH)
+        //             .expect("Failed to get System Time.")
+        //             .as_millis() as u64,
+        //         time_to_live_ms: 10000,
+        //     };
+        //     let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
+        //     let tx = AcceptedTransaction {
+        //         payload,
+        //         signatures: vec![sig],
+        //     };
+        //     tx_sender.send(tx).await;
+        // });
         let kura = Kura::from_configuration(&config.kura_configuration, wsv_blocks_sender);
         let sumeragi = Arc::new(RwLock::new(
             Sumeragi::from_configuration(
@@ -233,7 +333,9 @@ impl Iroha {
         let transactions_receiver = Arc::clone(&self.transactions_receiver);
         let queue = Arc::clone(&self.queue);
         let tx_handle = task::spawn(async move {
+            println!("enter");
             while let Some(transaction) = transactions_receiver.write().await.next().await {
+                println!("tx handle");
                 queue.write().await.push_pending_transaction(transaction);
             }
         });

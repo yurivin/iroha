@@ -102,7 +102,7 @@ impl Torii {
             // .and(warp::path("block"))
             .and(warp::body::bytes())
             .map(move |path: String, bytes: Bytes| {
-                println!("rcvd: {:?}", bytes);
+                println!("path: {}, rcvd: {:?}", path, bytes);
                 let request = Request::new(format!("/{}", path), bytes.to_vec());
                 let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
                 if let Response::Ok(data) = resp {
@@ -216,6 +216,7 @@ async fn handle_connections(
 
 #[log]
 async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Response, String> {
+    println!("handle req");
     match request.url() {
         uri::INSTRUCTIONS_URI => match RequestedTransaction::try_from(request.payload().to_vec()) {
             Ok(transaction) => {
@@ -229,6 +230,7 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                 // {
                 //     log::error!("Failed to send event - channel is full: {}", e);
                 // }
+                println!("rcvd tx: {:?}", transaction);
                 state
                     .write()
                     .await
@@ -237,7 +239,8 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                         &transaction,
                     ))))
                     .await;
-                let transaction = transaction.accept()?;
+                let transaction = dbg!(transaction.accept())?;
+
                 let payload = Vec::from(&transaction);
                 state
                     .write()
@@ -337,9 +340,13 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                         ))
                     }
                     Message::GetBlocksAfter(h, _) => {
-                        let from_pos = blocks
-                            .position(|block| block.header.previous_block_hash == h)
-                            .unwrap_or(0);
+                        let from_pos = if h != Hash::default() {
+                            blocks
+                                .position(|block| block.header.previous_block_hash == h)
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
                         if blocks.size_hint().1.unwrap() > from_pos {
                             Ok(Response::Ok(
                                 Message::ShareBlocks(blocks.collect(), PeerId::new("", pk))

@@ -320,6 +320,93 @@ mod asset {
             println!("Get Asset result: {:?}", result);
         }
     }
+    #[cfg(test)]
+    mod tests {
+        use async_std::task;
+        use iroha::{config::Configuration, isi, prelude::*};
+        use iroha_client::{client::Client, config::Configuration as ClientConfiguration};
+        use std::time::Duration;
+        use tempfile::TempDir;
+
+        const CONFIGURATION_PATH: &str = "tests/test_config.json";
+
+        #[async_std::test]
+        async fn cli_check_health_should_work() {
+            task::spawn(async {
+                let temp_dir = TempDir::new().expect("Failed to create TempDir.");
+                let mut configuration = Configuration::from_path(CONFIGURATION_PATH)
+                    .expect("Failed to load configuration.");
+                configuration
+                    .kura_configuration
+                    .kura_block_store_path(temp_dir.path());
+                let iroha = Iroha::new(configuration.clone());
+                iroha.start().await.expect("Failed to start Iroha.");
+                //Prevents temp_dir from clean up untill the end of the tests.
+                #[allow(clippy::empty_loop)]
+                loop {}
+            });
+            task::sleep(Duration::from_millis(300)).await;
+            super::health();
+        }
+
+        #[async_std::test]
+        async fn cli_scrape_metrics_should_work() {
+            task::spawn(async {
+                let temp_dir = TempDir::new().expect("Failed to create TempDir.");
+                let mut configuration = Configuration::from_path(CONFIGURATION_PATH)
+                    .expect("Failed to load configuration.");
+                configuration
+                    .kura_configuration
+                    .kura_block_store_path(temp_dir.path());
+                let iroha = Iroha::new(configuration.clone());
+                iroha.start().await.expect("Failed to start Iroha.");
+                //Prevents temp_dir from clean up untill the end of the tests.
+                #[allow(clippy::empty_loop)]
+                loop {}
+            });
+            task::sleep(Duration::from_millis(300)).await;
+            super::metrics();
+        }
+
+        #[async_std::test]
+        async fn cli_connect_to_consume_block_changes_should_work() {
+            task::spawn(async {
+                let temp_dir = TempDir::new().expect("Failed to create TempDir.");
+                let mut configuration = Configuration::from_path(CONFIGURATION_PATH)
+                    .expect("Failed to load configuration.");
+                configuration
+                    .kura_configuration
+                    .kura_block_store_path(temp_dir.path());
+                let iroha = Iroha::new(configuration.clone());
+                iroha.start().await.expect("Failed to start Iroha.");
+                //Prevents temp_dir from clean up untill the end of the tests.
+                #[allow(clippy::empty_loop)]
+                loop {}
+            });
+            task::sleep(Duration::from_millis(300)).await;
+            let connection_future = async_std::future::timeout(
+                Duration::from_millis(300),
+                task::spawn(async { super::connect("transaction", "all") }),
+            );
+            let domain_name = "global";
+            let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
+            let create_asset = isi::Register {
+                object: AssetDefinition::new(asset_definition_id),
+                destination_id: domain_name.to_string(),
+            };
+            let mut iroha_client = Client::new(&ClientConfiguration::from_iroha_configuration(
+                &Configuration::from_path(CONFIGURATION_PATH)
+                    .expect("Failed to load configuration."),
+            ));
+            iroha_client
+                .submit(create_asset.into())
+                .await
+                .expect("Failed to prepare state.");
+            if let Ok(result) = connection_future.await {
+                result.expect("Failed to connect.")
+            }
+        }
+    }
 }
 
 mod maintenance {

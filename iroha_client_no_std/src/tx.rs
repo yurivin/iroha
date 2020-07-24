@@ -23,13 +23,13 @@ pub struct RequestedTransaction {
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Payload {
     /// Account ID of transaction creator.
-    account_id: <Account as Identifiable>::Id,
+    pub account_id: <Account as Identifiable>::Id,
     /// An ordered set of instructions.
-    instructions: Vec<Instruction>,
+    pub instructions: Vec<Instruction>,
     /// Time of creation (unix time, in milliseconds).
-    creation_time: u64,
+    pub creation_time: u64,
     /// The transaction will be dropped after this time if it is still in a `Queue`.
-    time_to_live_ms: u64,
+    pub time_to_live_ms: u64,
 }
 
 impl RequestedTransaction {
@@ -38,12 +38,13 @@ impl RequestedTransaction {
         instructions: Vec<Instruction>,
         account_id: <Account as Identifiable>::Id,
         proposed_ttl_ms: u64,
+        creation_time: u64,
     ) -> RequestedTransaction {
         RequestedTransaction {
             payload: Payload {
                 instructions,
                 account_id,
-                creation_time: 0, // Utc::now().timestamp_millis() as u64,
+                creation_time, // Utc::now().timestamp_millis() as u64,
                 time_to_live_ms: proposed_ttl_ms,
             },
             signatures: Vec::new(),
@@ -165,6 +166,6 @@ impl From<SignedTransaction> for RequestedTransaction {
 /// `ValidTransaction` represents trustfull Transaction state.
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct ValidTransaction {
-    payload: Payload,
-    signatures: Vec<Signature>,
+    pub payload: Payload,
+    pub signatures: Vec<Signature>,
 }
