@@ -22,8 +22,12 @@ pub enum IrohaQuery {
     GetAccountAssets(asset::query::GetAccountAssets),
     /// Query Account information.
     GetAccount(account::query::GetAccount),
+    /// Query DEX information.
+    GetDEX(dex::query::GetDEX),
     /// Query all active DEX in the network.
     GetDEXList(dex::query::GetDEXList),
+    /// Query Token Pair information.
+    GetTokenPair(dex::query::GetTokenPair),
     /// Query all active Token Pairs for DEX.
     GetTokenPairList(dex::query::GetTokenPairList),
 }
@@ -35,8 +39,12 @@ pub enum QueryResult {
     GetAccountAssets(asset::query::GetAccountAssetsResult),
     /// Query Account information result.
     GetAccount(account::query::GetAccountResult),
+    /// Query DEX information.
+    GetDEX(dex::query::GetDEXResult),
     /// Query all active DEX in the network result.
     GetDEXList(dex::query::GetDEXListResult),
+    /// Query all active Token Pairs for DEX result.
+    GetTokenPair(dex::query::GetTokenPairResult),
     /// Query all active Token Pairs for DEX result.
     GetTokenPairList(dex::query::GetTokenPairListResult),
 }
@@ -49,7 +57,9 @@ impl IrohaQuery {
         match self {
             IrohaQuery::GetAccountAssets(query) => query.execute(world_state_view),
             IrohaQuery::GetAccount(query) => query.execute(world_state_view),
+            IrohaQuery::GetDEX(query) => query.execute(world_state_view),
             IrohaQuery::GetDEXList(query) => query.execute(world_state_view),
+            IrohaQuery::GetTokenPair(query) => query.execute(world_state_view),
             IrohaQuery::GetTokenPairList(query) => query.execute(world_state_view),
         }
     }

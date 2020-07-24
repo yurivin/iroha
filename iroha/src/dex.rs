@@ -1,12 +1,15 @@
 //! This module contains functionality related to `DEX`.
 
 use crate::prelude::*;
+use bigdecimal::BigDecimal;
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 const DEX_DOMAIN_NAME: &str = "dex";
 const DEX_BASE_ASSET: &str = "XOR";
+const MINIMUM_LIQUIDITY: u64 = 1000;
 
 type Name = String;
 
@@ -53,7 +56,7 @@ impl Identifiable for DEX {
 }
 
 /// Identification of  a Token Pair. Consists of underlying asset ids.
-#[derive(Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, std::hash::Hash, Io)]
+#[derive(Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Io)]
 pub struct TokenPairId {
     /// Containing DEX identifier.
     pub dex_id: <DEX as Identifiable>::Id,
@@ -78,9 +81,9 @@ impl TokenPairId {
     }
     /// Symbol representation of the Token Pair.
     pub fn get_symbol(&self) -> String {
-        // TODO[modbrin]: elaborate the format
+        // TODO: elaborate the format
         format!(
-            "{}>{}",
+            "{}-{}",
             self.base_asset.to_string(),
             self.target_asset.to_string(),
         )
@@ -89,7 +92,7 @@ impl TokenPairId {
 
 /// `TokenPair` represents an exchange pair between two assets in a domain. Assets are
 /// identified by their AssetDefinitionId's. Containing DEX is identified by domain name.
-#[derive(Encode, Decode, PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(Encode, Decode, PartialEq, Eq, Clone, Debug)]
 pub struct TokenPair {
     /// An Identification of the `TokenPair`, holds pair of token Ids.
     pub id: <TokenPair as Identifiable>::Id,
@@ -97,6 +100,9 @@ pub struct TokenPair {
     pub precision: u8,
     /// Fraction of price by which it can change.
     pub price_step: u32,
+    /// Liquidity Sources belonging to this TokenPair. At most one instance
+    /// of each type.
+    pub liquidity_sources: BTreeMap<<LiquiditySource as Identifiable>::Id, LiquiditySource>,
 }
 
 impl Identifiable for TokenPair {
@@ -116,7 +122,79 @@ impl TokenPair {
             id: TokenPairId::new(dex_id, base_asset, target_asset),
             precision,
             price_step,
+            liquidity_sources: BTreeMap::new(),
         }
+    }
+}
+
+#[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
+pub struct LiquiditySourceId {
+    token_pair_id: <TokenPair as Identifiable>::Id,
+    liquidity_source_type: LiquiditySourceType,
+}
+
+impl LiquiditySourceId {
+    pub fn new(
+        token_pair_id: <TokenPair as Identifiable>::Id,
+        liquidity_source_type: LiquiditySourceType,
+    ) -> Self {
+        LiquiditySourceId {
+            token_pair_id,
+            liquidity_source_type,
+        }
+    }
+}
+
+#[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
+pub enum LiquiditySourceType {
+    XYKPool,
+    OrderBook,
+}
+
+/// `LiquiditySource` represents an exchange pair between two assets in a domain. Assets are
+/// identified by their AssetDefinitionId's. Containing DEX is identified by domain name.
+#[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
+pub enum LiquiditySourceData {
+    XYKPool {
+        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        storage_account_id: <Account as Identifiable>::Id,
+        pswap_total_supply: String,
+        base_asset_amount: String,
+        target_asset_amount: String,
+        k_last: String,
+        // fee_fraction
+        // owner_fee_fraction
+    },
+    OrderBook, // this option currently is to prevent `irrefutable if-let pattern` warning
+}
+
+#[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
+pub struct LiquiditySource {
+    id: <LiquiditySource as Identifiable>::Id,
+    data: LiquiditySourceData,
+}
+
+impl Identifiable for LiquiditySource {
+    type Id = LiquiditySourceId;
+}
+
+impl LiquiditySource {
+    /// Default XYK Pool constructor.
+    pub fn new_xyk_pool(
+        token_pair_id: <TokenPair as Identifiable>::Id,
+        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        storage_account_id: <Account as Identifiable>::Id,
+    ) -> Self {
+        let data = LiquiditySourceData::XYKPool {
+            pswap_asset_definition_id,
+            storage_account_id,
+            pswap_total_supply: BigDecimal::from(0).to_string(),
+            base_asset_amount: BigDecimal::from(0).to_string(),
+            target_asset_amount: BigDecimal::from(0).to_string(),
+            k_last: BigDecimal::from(0).to_string(),
+        };
+        let id = LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
+        LiquiditySource { id, data }
     }
 }
 
@@ -124,9 +202,11 @@ impl TokenPair {
 /// Token Pairs and Liquidity Sources.
 pub mod isi {
     use super::*;
+    use crate::dex::query::*;
     use crate::isi::prelude::*;
     use crate::permission::isi::PermissionInstruction;
     use std::collections::btree_map::Entry;
+    use std::ops::Mul;
 
     /// Enumeration of all legal DEX related Instructions.
     #[derive(Clone, Debug, Io, Encode, Decode)]
@@ -137,6 +217,17 @@ pub mod isi {
         CreateTokenPair(TokenPair, <DEX as Identifiable>::Id),
         /// Variant of instruction to remove existing `TokenPair` entity from `DEX`.
         RemoveTokenPair(<TokenPair as Identifiable>::Id, <DEX as Identifiable>::Id),
+        /// Variant of instruction to add liquidity source for existing `TokenPair`.
+        AddLiquiditySource(LiquiditySource, <TokenPair as Identifiable>::Id),
+        /// Variant of instruction to deposit tokens to liquidity pool.
+        /// `LiquiditySource` <-- Amount Base Desired, Amount Target Desired, Amount Base Min, Amount Target Min
+        AddLiquidityToXYKPool(
+            <LiquiditySource as Identifiable>::Id,
+            String,
+            String,
+            String,
+            String,
+        ),
     }
 
     impl DEXInstruction {
@@ -160,6 +251,26 @@ pub mod isi {
                     Remove::new(token_pair_id.clone(), dex_id.clone())
                         .execute(authority, world_state_view)
                 }
+                DEXInstruction::AddLiquiditySource(liquidity_source, token_pair_id) => {
+                    Add::new(liquidity_source.clone(), token_pair_id.clone())
+                        .execute(authority, world_state_view)
+                }
+                DEXInstruction::AddLiquidityToXYKPool(
+                    liquidity_source_id,
+                    amount_a_desired,
+                    amount_b_desired,
+                    amount_a_min,
+                    amount_b_min,
+                ) => xyk_pool_add_liquidity_execute(
+                    liquidity_source_id.clone(),
+                    amount_a_desired.clone(),
+                    amount_b_desired.clone(),
+                    amount_a_min.clone(),
+                    amount_b_min.clone(),
+                    authority.clone(), // TODO: change this
+                    authority,
+                    world_state_view,
+                ),
             }
         }
     }
@@ -189,11 +300,7 @@ pub mod isi {
             world_state_view
                 .read_account(&dex.owner_account_id)
                 .ok_or("account not found")?;
-            let domain = world_state_view
-                .peer()
-                .domains
-                .get_mut(&domain_name)
-                .ok_or("domain not found")?;
+            let domain = get_domain_mut(&domain_name, world_state_view)?;
             if domain.dex.is_none() {
                 domain.dex = Some(dex);
                 Ok(())
@@ -237,9 +344,7 @@ pub mod isi {
             PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let domain_name = self.destination_id.domain_name;
             let token_pair = self.object;
-            let domain = world_state_view
-                .domain(&domain_name)
-                .ok_or("domain not found")?;
+            let domain = get_domain(&domain_name, world_state_view)?;
             let base_asset_definition = &token_pair.id.base_asset;
             let target_asset_definition = &token_pair.id.target_asset;
             if !domain.asset_definitions.contains_key(base_asset_definition) {
@@ -269,10 +374,7 @@ pub mod isi {
             if base_asset_definition.name == target_asset_definition.name {
                 return Err("assets in token pair must be different".to_owned());
             }
-            let dex = domain
-                .dex
-                .as_mut()
-                .ok_or("dex not initialized for domain")?;
+            let dex = get_dex_mut(&domain_name, world_state_view)?;
             match dex.token_pairs.entry(token_pair.id.clone()) {
                 Entry::Occupied(_) => Err("token pair already exists".to_owned()),
                 Entry::Vacant(entry) => {
@@ -313,12 +415,7 @@ pub mod isi {
         ) -> Result<(), String> {
             PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let token_pair_id = self.object;
-            let dex = world_state_view
-                .domain(&token_pair_id.dex_id.domain_name)
-                .ok_or("domain not found")?
-                .dex
-                .as_mut()
-                .ok_or("dex not initialized for domain")?;
+            let dex = get_dex_mut(&token_pair_id.dex_id.domain_name, world_state_view)?;
             match dex.token_pairs.entry(token_pair_id.clone()) {
                 Entry::Occupied(entry) => {
                     entry.remove();
@@ -335,6 +432,421 @@ pub mod isi {
                 instruction.object,
                 instruction.destination_id,
             ))
+        }
+    }
+
+    /// Constructor of `Add<DEX, LiquiditySource>` ISI.
+    ///
+    /// Add new XYK Liquidity Pool for DEX with given `TokenPair`.
+    pub fn create_xyk_pool(
+        token_pair_id: <TokenPair as Identifiable>::Id,
+        // pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    ) -> Instruction {
+        let domain_name = token_pair_id.dex_id.domain_name.clone();
+        let asset_name = format!(
+            "PSWAP XYK {}-{}",
+            &token_pair_id.base_asset.name, &token_pair_id.target_asset.name
+        );
+        let pswap_asset_definition =
+            AssetDefinition::new(AssetDefinitionId::new(&asset_name, &domain_name));
+        let account_name = format!(
+            "PSWAP XYK {}-{} STORE",
+            &token_pair_id.base_asset.name, &token_pair_id.target_asset.name,
+        );
+        let storage_account = Account::new(&account_name, &domain_name);
+
+        Instruction::If(
+            Box::new(Instruction::ExecuteQuery(IrohaQuery::GetTokenPair(
+                GetTokenPair {
+                    token_pair_id: token_pair_id.clone(),
+                },
+            ))),
+            Box::new(Instruction::Sequence(vec![
+                Register {
+                    // register storage account
+                    object: pswap_asset_definition.clone(),
+                    destination_id: domain_name.clone(),
+                }
+                .into(),
+                Register {
+                    object: storage_account.clone(),
+                    destination_id: domain_name.clone(),
+                }
+                .into(),
+                // register asset definition
+                Add {
+                    object: LiquiditySource::new_xyk_pool(
+                        token_pair_id.clone(),
+                        pswap_asset_definition.id.clone(),
+                        storage_account.id.clone(),
+                    ),
+                    destination_id: token_pair_id,
+                }
+                .into(),
+            ])),
+            Some(Box::new(Instruction::Fail(
+                "token pair not found".to_string(),
+            ))),
+        )
+    }
+
+    impl Add<TokenPair, LiquiditySource> {
+        pub(crate) fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
+            let liquidity_source = self.object;
+            let token_pair_id = &liquidity_source.id.token_pair_id;
+            let token_pair = get_token_pair_mut(token_pair_id, world_state_view)?;
+            match token_pair
+                .liquidity_sources
+                .entry(liquidity_source.id.clone())
+            {
+                Entry::Occupied(_) => {
+                    Err("liquidity source already exists for token pair".to_owned())
+                }
+                Entry::Vacant(entry) => {
+                    // TODO: register pswap token for this pool
+                    entry.insert(liquidity_source);
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    impl From<Add<TokenPair, LiquiditySource>> for Instruction {
+        fn from(instruction: Add<TokenPair, LiquiditySource>) -> Self {
+            Instruction::DEX(DEXInstruction::AddLiquiditySource(
+                instruction.object,
+                instruction.destination_id,
+            ))
+        }
+    }
+
+    pub fn xyk_pool_add_liquidity(
+        liquidity_source_id: <LiquiditySource as Identifiable>::Id,
+        amount_a_desired: String,
+        amount_b_desired: String,
+        amount_a_min: String,
+        amount_b_min: String,
+    ) -> Instruction {
+        Instruction::DEX(DEXInstruction::AddLiquidityToXYKPool(
+            liquidity_source_id,
+            amount_a_desired,
+            amount_b_desired,
+            amount_a_min,
+            amount_b_min,
+        ))
+    }
+
+    fn xyk_pool_add_liquidity_execute(
+        liquidity_source_id: <LiquiditySource as Identifiable>::Id,
+        amount_a_desired: String,
+        amount_b_desired: String,
+        amount_a_min: String,
+        amount_b_min: String,
+        to: <Account as Identifiable>::Id,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        //let domain_name = &liquidity_source_id.token_pair_id.dex_id.domain_name;
+        let liquidity_source =
+            get_liquidity_source(&liquidity_source_id, world_state_view)?.clone();
+        let token_pair_id = &liquidity_source_id.token_pair_id;
+        let dex = get_dex(&token_pair_id.dex_id.domain_name, world_state_view)?;
+
+        let (reserve_a, reserve_b, k, total_supply) = if let LiquiditySourceData::XYKPool {
+            pswap_asset_definition_id,
+            storage_account_id,
+            pswap_total_supply,
+            base_asset_amount,
+            target_asset_amount,
+            k_last,
+        } = liquidity_source.data.clone()
+        {
+            let reserve_a =
+                BigDecimal::from_str(&base_asset_amount).map_err(|_| "parsing decimal failed")?;
+            let reserve_b =
+                BigDecimal::from_str(&target_asset_amount).map_err(|_| "parsing decimal failed")?;
+            let (amount_a, amount_b) = xyk_pool_get_optimal_deposit_amounts(
+                reserve_a.clone(),
+                reserve_b.clone(),
+                BigDecimal::from_str(&amount_a_desired).map_err(|_| "parsing decimal failed")?,
+                BigDecimal::from_str(&amount_b_desired).map_err(|_| "parsing decimal failed")?,
+                BigDecimal::from_str(&amount_a_min).map_err(|_| "parsing decimal failed")?,
+                BigDecimal::from_str(&amount_b_min).map_err(|_| "parsing decimal failed")?,
+            )?;
+            //todo!("transfer target must be pool storage account");
+            transfer_from(
+                token_pair_id.base_asset.clone(),
+                authority.clone(),
+                storage_account_id.clone(),
+                amount_a.clone(),
+                authority.clone(),
+                world_state_view,
+            )?;
+            transfer_from(
+                token_pair_id.target_asset.clone(),
+                authority.clone(),
+                storage_account_id.clone(),
+                amount_b.clone(),
+                authority.clone(),
+                world_state_view,
+            )?;
+            let (reserve_a, reserve_b, k, total_supply) = mint_pswap_with_fee(
+                pswap_asset_definition_id.clone(),
+                to,
+                amount_a,
+                amount_b,
+                reserve_a,
+                reserve_b,
+                BigDecimal::from_str(&k_last).map_err(|_| "parsing decimal failed")?,
+                None,
+                BigDecimal::from_str(&pswap_total_supply).map_err(|_| "parsing decimal failed")?,
+                authority,
+                world_state_view,
+            )?;
+            // update values in liquidity pool
+            (
+                reserve_a.to_string(),
+                reserve_b.to_string(),
+                k.to_string(),
+                total_supply.to_string(),
+            )
+        } else {
+            return Err("wrong liquidity source: adding liquidity to xyk pool".to_owned());
+        };
+        if let LiquiditySourceData::XYKPool {
+            pswap_total_supply,
+            base_asset_amount,
+            target_asset_amount,
+            k_last,
+            ..
+        } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
+        {
+            *pswap_total_supply = total_supply;
+            *base_asset_amount = reserve_a;
+            *target_asset_amount = reserve_b;
+            *k_last = k;
+        }
+        Ok(())
+    }
+
+    /// Based on given reserves, desired and minimal amounts to add liquidity, either return
+    /// optimal values (needed to preserve reserves proportion) or error if it's not possible
+    /// to keep proportion with proposed amounts.
+    fn xyk_pool_get_optimal_deposit_amounts(
+        reserve_a: BigDecimal,
+        reserve_b: BigDecimal,
+        amount_a_desired: BigDecimal,
+        amount_b_desired: BigDecimal,
+        amount_a_min: BigDecimal,
+        amount_b_min: BigDecimal,
+    ) -> Result<(BigDecimal, BigDecimal), String> {
+        Ok(
+            if reserve_a == BigDecimal::from(0) && reserve_b == BigDecimal::from(0) {
+                (amount_a_desired, amount_b_desired)
+            } else {
+                let amount_b_optimal = xyk_pool_quote(
+                    amount_a_desired.clone(),
+                    reserve_a.clone(),
+                    reserve_b.clone(),
+                )?;
+                if amount_b_optimal <= amount_b_desired {
+                    if !(amount_b_optimal >= amount_b_min) {
+                        return Err("insufficient b amount".to_owned());
+                    }
+                    (amount_a_desired, amount_b_optimal)
+                } else {
+                    let amount_a_optimal =
+                        xyk_pool_quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
+                    // if !(amount_a_optimal <= amount_a_desired) {return Err("assertion".to_owned())}
+                    assert!(amount_a_optimal <= amount_a_desired); // TODO: don't use assert
+                    if !(amount_a_optimal >= amount_a_min) {
+                        return Err("insufficient a amount".to_owned());
+                    }
+                    (amount_a_optimal, amount_b_desired)
+                }
+            },
+        )
+    }
+
+    /// Given some amount of an Asset and pair reserves, returns an equivalent amount of the other Asset.
+    fn xyk_pool_quote(
+        amount_a: BigDecimal,
+        reserve_a: BigDecimal,
+        reserve_b: BigDecimal,
+    ) -> Result<BigDecimal, String> {
+        if !(amount_a > BigDecimal::from(0)) {
+            return Err("insufficient amount".to_owned());
+        }
+        if !(reserve_a > BigDecimal::from(0) && reserve_b > BigDecimal::from(0)) {
+            return Err("insufficient liquidity".to_owned());
+        }
+        Ok(amount_a.mul(reserve_b) / reserve_a) // calculate amount_b via proportion
+    }
+
+    fn transfer_from(
+        token: <AssetDefinition as Identifiable>::Id,
+        from: <Account as Identifiable>::Id,
+        to: <Account as Identifiable>::Id,
+        value: BigDecimal,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        let quantity: u32 = 42; // TODO: convertion
+        let asset_id = AssetId::new(token, from.clone());
+        AccountInstruction::TransferAsset(from, to, Asset::with_quantity(asset_id, quantity))
+            .execute(authority, world_state_view)
+    }
+
+    /// Mint pswap tokens representing liquidity in pool for depositing account.
+    /// returns ()
+    fn mint_pswap_with_fee(
+        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        to: <Account as Identifiable>::Id,
+        amount_a: BigDecimal,
+        amount_b: BigDecimal,
+        reserve_a: BigDecimal,
+        reserve_b: BigDecimal,
+        k_last: BigDecimal,
+        fee_to: Option<<Account as Identifiable>::Id>,
+        total_supply: BigDecimal,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal, BigDecimal), String> {
+        let (mut k_last, total_supply) = mint_pswap_fee(
+            pswap_asset_definition_id.clone(),
+            reserve_a.clone(),
+            reserve_b.clone(),
+            k_last.clone(),
+            fee_to.clone(),
+            authority.clone(),
+            world_state_view,
+        )?;
+
+        let mut liquidity = BigDecimal::from(0);
+        if total_supply == BigDecimal::from(0) {
+            liquidity = amount_a
+                .clone()
+                .mul(amount_b.clone())
+                .sqrt()
+                .ok_or("negative value provided")?
+                - BigDecimal::from(MINIMUM_LIQUIDITY);
+            //TODO: does minimum liquidity needs to be locked?
+            // mint (address(0), MINIMUM_LIQUIDITY)
+            todo!("if min liquditity is not locked, total_supply will not change correctly, need to mint to zero address!")
+        } else {
+            liquidity = (amount_a.clone().mul(total_supply.clone()) / reserve_a)
+                .min(amount_b.clone().mul(total_supply.clone()) / reserve_b);
+        }
+        if !(liquidity > BigDecimal::from(0)) {
+            return Err("insufficient liquidity minted".to_owned());
+        }
+        let total_supply = mint_pswap(
+            pswap_asset_definition_id,
+            to,
+            liquidity,
+            total_supply,
+            authority,
+            world_state_view,
+        )?;
+        let (mut reserve_a, mut reserve_b) = (amount_a, amount_b);
+        if fee_to.is_some() {
+            k_last = reserve_a.clone().mul(reserve_b.clone());
+        }
+        Ok((reserve_a, reserve_b, k_last, total_supply))
+    }
+
+    /// returns (k_last, total_supply)
+    fn mint_pswap_fee(
+        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        reserve_a: BigDecimal,
+        reserve_b: BigDecimal,
+        k_last: BigDecimal,
+        fee_to: Option<<Account as Identifiable>::Id>,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(BigDecimal, BigDecimal), String> {
+        let mut total_supply = BigDecimal::from(0);
+        if let Some(fee_to) = fee_to {
+            if k_last != BigDecimal::from(0) {
+                let root_k = reserve_a
+                    .mul(reserve_b)
+                    .sqrt()
+                    .ok_or("negative value provided")?;
+                let root_k_last = k_last.sqrt().ok_or("negative value provided")?;
+                if root_k > root_k_last {
+                    let numerator = total_supply
+                        .clone()
+                        .mul(root_k.clone() - root_k_last.clone());
+                    let demonimator = root_k.mul(BigDecimal::from(5)) + root_k_last;
+                    let liquidity = numerator / demonimator;
+                    if liquidity > BigDecimal::from(0) {
+                        total_supply = mint_pswap(
+                            asset_definition_id,
+                            fee_to,
+                            liquidity,
+                            total_supply,
+                            authority,
+                            world_state_view,
+                        )?;
+                    }
+                }
+            }
+        } else if k_last != BigDecimal::from(0) {
+            return Ok((BigDecimal::from(0), total_supply));
+        }
+        Ok((k_last, total_supply))
+    }
+
+    ///
+    /// returns total_supply
+    fn mint_pswap(
+        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        to: <Account as Identifiable>::Id,
+        value: BigDecimal,
+        total_supply: BigDecimal,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<BigDecimal, String> {
+        let quantity: u32 = 42; // TODO: conversion
+        let asset_id = AssetId::new(asset_definition_id, to);
+        AssetInstruction::MintAsset(quantity, asset_id).execute(authority, world_state_view)?;
+        Ok(total_supply + value)
+    }
+
+    /// Register new `Account` in domain. This function should
+    /// be called from contract which performs necessary permission checks.
+    fn register_account_unchecked(
+        account: Account,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        let domain = get_domain_mut(&account.id.domain_name, world_state_view)?;
+        match domain.accounts.entry(account.id.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(account);
+                Ok(())
+            }
+            Entry::Occupied(_) => Err("account already exists".to_owned()),
+        }
+    }
+
+    /// Register new `Asset` in domain. This function should
+    /// be called from contract which performs necessary permission checks.
+    fn register_asset_unchecked(
+        asset_definition: AssetDefinition,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        let domain = get_domain_mut(&asset_definition.id.domain_name, world_state_view)?;
+        match domain.asset_definitions.entry(asset_definition.id.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(asset_definition);
+                Ok(())
+            }
+            Entry::Occupied(_) => Err("asset definition already exists".to_owned()),
         }
     }
 
@@ -440,9 +952,8 @@ pub mod isi {
                 .execute(dex_owner_account.id.clone(), world_state_view)
                 .expect("failed to initialize dex");
 
-            let dex_query_result = world_state_view
-                .read_dex(&domain_name)
-                .expect("query dex failed");
+            let dex_query_result =
+                get_dex(&domain_name, world_state_view).expect("query dex failed");
             assert_eq!(&dex_query_result.id.domain_name, &domain_name);
 
             if let QueryResult::GetDEXList(dex_list_result) = GetDEXList::build_request()
@@ -603,23 +1114,23 @@ pub mod isi {
     }
 }
 
-/// Iroha World State View module provides extensions for the `WorldStateView` for initializing
-/// a DEX in particular Domain.
-pub mod wsv {
-    use super::*;
-
-    impl WorldStateView {
-        /// Get `DEX` without an ability to modify it.
-        pub fn read_dex(&self, domain_name: &str) -> Option<&DEX> {
-            self.read_peer().domains.get(domain_name)?.dex.as_ref()
-        }
-
-        /// Get `DEX` with an ability to modify it.
-        pub fn dex(&mut self, domain_name: &str) -> Option<&mut DEX> {
-            self.peer().domains.get_mut(domain_name)?.dex.as_mut()
-        }
-    }
-}
+// /// Iroha World State View module provides extensions for the `WorldStateView` for initializing
+// /// a DEX in particular Domain.
+// pub mod wsv {
+//     use super::*;
+//
+//     impl WorldStateView {
+//         /// Get `DEX` without an ability to modify it.
+//         pub fn read_dex(&self, domain_name: &str) -> Option<&DEX> {
+//             self.read_peer().domains.get(domain_name)?.dex.as_ref()
+//         }
+//
+//         /// Get `DEX` with an ability to modify it.
+//         pub fn dex(&mut self, domain_name: &str) -> Option<&mut DEX> {
+//             self.peer().domains.get_mut(domain_name)?.dex.as_mut()
+//         }
+//     }
+// }
 
 /// Query module provides functions for performing dex-related queries.
 pub mod query {
@@ -627,6 +1138,137 @@ pub mod query {
     use crate::query::*;
     use iroha_derive::*;
     use std::time::SystemTime;
+
+    /// Helper function to get reference to `Domain` by its name.
+    pub fn get_domain<'a>(
+        domain_name: &str,
+        world_state_view: &'a WorldStateView,
+    ) -> Result<&'a Domain, String> {
+        Ok(world_state_view
+            .read_domain(domain_name)
+            .ok_or("domain not found")?)
+    }
+
+    /// Helper function to get mutable reference to `Domain` by its name.
+    pub fn get_domain_mut<'a>(
+        domain_name: &str,
+        world_state_view: &'a mut WorldStateView,
+    ) -> Result<&'a mut Domain, String> {
+        Ok(world_state_view
+            .domain(domain_name)
+            .ok_or("domain not found")?)
+    }
+
+    /// Helper function to get reference to DEX by name
+    /// of containing domain.
+    pub fn get_dex<'a>(
+        domain_name: &str,
+        world_state_view: &'a WorldStateView,
+    ) -> Result<&'a DEX, String> {
+        Ok(get_domain(domain_name, world_state_view)?
+            .dex
+            .as_ref()
+            .ok_or("dex not initialized for domain")?)
+    }
+
+    /// Helper function to get mutable reference to DEX by name
+    /// of containing domain.
+    pub fn get_dex_mut<'a>(
+        domain_name: &str,
+        world_state_view: &'a mut WorldStateView,
+    ) -> Result<&'a mut DEX, String> {
+        Ok(get_domain_mut(domain_name, world_state_view)?
+            .dex
+            .as_mut()
+            .ok_or("dex not initialized for domain")?)
+    }
+
+    /// Helper function to get reference to `TokenPair` by its identifier.
+    pub fn get_token_pair<'a>(
+        token_pair_id: &<TokenPair as Identifiable>::Id,
+        world_state_view: &'a WorldStateView,
+    ) -> Result<&'a TokenPair, String> {
+        Ok(
+            get_dex(&token_pair_id.dex_id.domain_name, world_state_view)?
+                .token_pairs
+                .get(token_pair_id)
+                .ok_or("token pair not found")?,
+        )
+    }
+    /// Helper function to get mutable reference to `TokenPair` by its identifier.
+    pub fn get_token_pair_mut<'a>(
+        token_pair_id: &<TokenPair as Identifiable>::Id,
+        world_state_view: &'a mut WorldStateView,
+    ) -> Result<&'a mut TokenPair, String> {
+        Ok(
+            get_dex_mut(&token_pair_id.dex_id.domain_name, world_state_view)?
+                .token_pairs
+                .get_mut(token_pair_id)
+                .ok_or("token pair not found")?,
+        )
+    }
+
+    /// Helper function to get reference to `LiquiditySource` by its identifier.
+    pub fn get_liquidity_source<'a>(
+        liquidity_source_id: &<LiquiditySource as Identifiable>::Id,
+        world_state_view: &'a WorldStateView,
+    ) -> Result<&'a LiquiditySource, String> {
+        Ok(
+            get_token_pair(&liquidity_source_id.token_pair_id, world_state_view)?
+                .liquidity_sources
+                .get(liquidity_source_id)
+                .ok_or("liquidity source not found")?,
+        )
+    }
+
+    /// Helper function to get mutable reference to `LiquiditySource` by its identifier.
+    pub fn get_liquidity_source_mut<'a>(
+        liquidity_source_id: &<LiquiditySource as Identifiable>::Id,
+        world_state_view: &'a mut WorldStateView,
+    ) -> Result<&'a mut LiquiditySource, String> {
+        Ok(
+            get_token_pair_mut(&liquidity_source_id.token_pair_id, world_state_view)?
+                .liquidity_sources
+                .get_mut(liquidity_source_id)
+                .ok_or("liquidity source not found")?,
+        )
+    }
+
+    /// Get DEX information.
+    #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
+    pub struct GetDEX {
+        pub domain_name: <Domain as Identifiable>::Id,
+    }
+    /// Result of `GetDEX` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetDEXResult {
+        /// `DEX` entity.
+        pub dex: DEX,
+    }
+
+    impl GetDEX {
+        /// Build a `GetDEX` query in the form of a `QueryRequest`.
+        pub fn build_request(domain_name: <Domain as Identifiable>::Id) -> QueryRequest {
+            let query = GetDEX { domain_name };
+            QueryRequest {
+                timestamp: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis()
+                    .to_string(),
+                signature: Option::None,
+                query: query.into(),
+            }
+        }
+    }
+
+    impl Query for GetDEX {
+        #[log]
+        fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
+            let dex = get_dex(&self.domain_name, world_state_view)?;
+            Ok(QueryResult::GetDEX(GetDEXResult { dex: dex.clone() }))
+        }
+    }
 
     /// Get list of active DEX in the network.
     #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
@@ -664,14 +1306,50 @@ pub mod query {
     }
 
     /// A query to get a list of all active DEX in network.
-    pub fn query_dex_list<'a>(
-        world_state_view: &'a WorldStateView,
-    ) -> impl Iterator<Item = &DEX> + 'a {
+    fn query_dex_list<'a>(world_state_view: &'a WorldStateView) -> impl Iterator<Item = &DEX> + 'a {
         world_state_view
             .peer
             .domains
             .iter()
             .filter_map(|(_, domain)| domain.dex.as_ref())
+    }
+
+    /// Get DEX information.
+    #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
+    pub struct GetTokenPair {
+        pub token_pair_id: <TokenPair as Identifiable>::Id,
+    }
+    /// Result of `GetDEX` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetTokenPairResult {
+        /// `TokenPair` information.
+        pub token_pair: TokenPair,
+    }
+
+    impl GetTokenPair {
+        /// Build a `GetTokenPair` query in the form of a `QueryRequest`.
+        pub fn build_request(token_pair_id: <TokenPair as Identifiable>::Id) -> QueryRequest {
+            let query = GetTokenPair { token_pair_id };
+            QueryRequest {
+                timestamp: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis()
+                    .to_string(),
+                signature: Option::None,
+                query: query.into(),
+            }
+        }
+    }
+
+    impl Query for GetTokenPair {
+        #[log]
+        fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
+            let token_pair = get_token_pair(&self.token_pair_id, world_state_view)?;
+            Ok(QueryResult::GetTokenPair(GetTokenPairResult {
+                token_pair: token_pair.clone(),
+            }))
+        }
     }
 
     /// Get list of active Token Pairs for Domain by its name.
@@ -714,6 +1392,11 @@ pub mod query {
                 .cloned()
                 .collect::<Vec<_>>();
             // Add indirect Token Pairs through base asset
+            // Example: for actual pairs -
+            // BASE:TARGET_A, BASE:TARGET_B, BASE:TARGET_C
+            // query will return -
+            // BASE:TARGET_A, BASE:TARGET_B, BASE:TARGET_C,
+            // TARGET_A:TARGET_B, TARGET_A:TARGET_C, TARGET_B:TARGET_C
             let target_assets = token_pair_list
                 .iter()
                 .map(|token_pair| token_pair.id.target_asset.clone())
@@ -759,16 +1442,15 @@ pub mod query {
         token_pair_id: <TokenPair as Identifiable>::Id,
         world_state_view: &WorldStateView,
     ) -> Option<&TokenPair> {
-        let dex = world_state_view.read_dex(&token_pair_id.dex_id.domain_name)?;
-        Some(dex.token_pairs.get(&token_pair_id)?)
+        get_token_pair(&token_pair_id, world_state_view).ok()
     }
 
     /// A query to get a list of all active `TokenPair`s of a DEX identified by its domain name.
-    pub fn query_token_pair_list<'a>(
+    fn query_token_pair_list<'a>(
         domain_name: &str,
         world_state_view: &'a WorldStateView,
     ) -> Option<impl Iterator<Item = &'a TokenPair>> {
-        let dex = world_state_view.read_dex(domain_name)?;
+        let dex = world_state_view.read_domain(domain_name)?.dex.as_ref()?;
         Some(dex.token_pairs.iter().map(|(_, value)| value))
     }
 
@@ -777,7 +1459,7 @@ pub mod query {
         domain_name: &str,
         world_state_view: &WorldStateView,
     ) -> Option<usize> {
-        let dex = world_state_view.read_dex(domain_name)?;
+        let dex = world_state_view.read_domain(domain_name)?.dex.as_ref()?;
         Some(dex.token_pairs.len())
     }
 }
