@@ -120,11 +120,12 @@ impl AcceptedTransaction {
         let current_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("Failed to get System Time.");
-        (current_time - Duration::from_millis(self.payload.creation_time))
-            > min(
-                Duration::from_millis(self.payload.time_to_live_ms),
-                transaction_time_to_live,
-            )
+        let elapsed = (current_time - Duration::from_millis(self.payload.creation_time));
+        let ttl = min(
+            Duration::from_millis(self.payload.time_to_live_ms),
+            transaction_time_to_live,
+        );
+        dbg!(elapsed) > dbg!(ttl)
     }
 }
 
