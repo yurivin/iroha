@@ -7,9 +7,10 @@ use parity_scale_codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-const DEX_DOMAIN_NAME: &str = "dex";
+const PSWAP_ASSET_NAME: &str = "PSWAP";
+const STORAGE_ACCOUNT_NAME: &str = "STORE";
 const DEX_BASE_ASSET: &str = "XOR";
-const MINIMUM_LIQUIDITY: u64 = 1000;
+const MINIMUM_LIQUIDITY: u32 = 1000;
 
 type Name = String;
 
@@ -55,7 +56,7 @@ impl Identifiable for DEX {
     type Id = DEXId;
 }
 
-/// Identification of  a Token Pair. Consists of underlying asset ids.
+/// Identification of a Token Pair. Consists of underlying asset ids.
 #[derive(Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Io)]
 pub struct TokenPairId {
     /// Containing DEX identifier.
@@ -127,6 +128,8 @@ impl TokenPair {
     }
 }
 
+/// Identification of a Liquidity Source. Consists of Token Pair Id and underlying
+/// liquidity source type.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub struct LiquiditySourceId {
     token_pair_id: <TokenPair as Identifiable>::Id,
@@ -134,6 +137,7 @@ pub struct LiquiditySourceId {
 }
 
 impl LiquiditySourceId {
+    /// Default constructor for Liquidity Source identifier.
     pub fn new(
         token_pair_id: <TokenPair as Identifiable>::Id,
         liquidity_source_type: LiquiditySourceType,
@@ -145,9 +149,12 @@ impl LiquiditySourceId {
     }
 }
 
+/// Enumration representing types of liquidity sources.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub enum LiquiditySourceType {
+    /// X*Y=K liquidity pool.
     XYKPool,
+    /// Regular order book.
     OrderBook,
 }
 
@@ -155,19 +162,27 @@ pub enum LiquiditySourceType {
 /// identified by their AssetDefinitionId's. Containing DEX is identified by domain name.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub enum LiquiditySourceData {
+    /// Data representing state of the XYK liquidity pool.
     XYKPool {
+        /// Asset definition of liquidity token belongin to given pool.
         pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        /// Account that is used to store exchanged tokens, i.e. actual liquidity.
         storage_account_id: <Account as Identifiable>::Id,
+        /// Amount of active liquidity tokens.
         pswap_total_supply: String,
+        /// Amount of base tokens in the pool (currently stored in storage account).
         base_asset_amount: String,
+        /// Amount of target tokens in the pool (currently stored in storage account).
         target_asset_amount: String,
+        /// K (constant product) value, updated by latest liquidity operation.
         k_last: String,
-        // fee_fraction
-        // owner_fee_fraction
     },
+    /// Data representing state of the Order Book.
     OrderBook, // this option currently is to prevent `irrefutable if-let pattern` warning
 }
 
+/// Liquidity Source entity belongs to particular Token Pair, exchange operations
+/// are handled through it.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub struct LiquiditySource {
     id: <LiquiditySource as Identifiable>::Id,
@@ -294,9 +309,10 @@ pub mod isi {
             authority: <Account as Identifiable>::Id,
             world_state_view: &mut WorldStateView,
         ) -> Result<(), String> {
-            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let dex = self.object;
             let domain_name = self.destination_id;
+            PermissionInstruction::CanManageDEX(authority, Some(domain_name.clone()))
+                .execute(world_state_view)?;
             world_state_view
                 .read_account(&dex.owner_account_id)
                 .ok_or("account not found")?;
@@ -341,9 +357,10 @@ pub mod isi {
             authority: <Account as Identifiable>::Id,
             world_state_view: &mut WorldStateView,
         ) -> Result<(), String> {
-            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
-            let domain_name = self.destination_id.domain_name;
             let token_pair = self.object;
+            let domain_name = self.destination_id.domain_name;
+            PermissionInstruction::CanManageDEX(authority, Some(domain_name.clone()))
+                .execute(world_state_view)?;
             let domain = get_domain(&domain_name, world_state_view)?;
             let base_asset_definition = &token_pair.id.base_asset;
             let target_asset_definition = &token_pair.id.target_asset;
@@ -413,8 +430,12 @@ pub mod isi {
             authority: <Account as Identifiable>::Id,
             world_state_view: &mut WorldStateView,
         ) -> Result<(), String> {
-            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let token_pair_id = self.object;
+            PermissionInstruction::CanManageDEX(
+                authority,
+                Some(token_pair_id.dex_id.domain_name.clone()),
+            )
+            .execute(world_state_view)?;
             let dex = get_dex_mut(&token_pair_id.dex_id.domain_name, world_state_view)?;
             match dex.token_pairs.entry(token_pair_id.clone()) {
                 Entry::Occupied(entry) => {
@@ -438,23 +459,18 @@ pub mod isi {
     /// Constructor of `Add<DEX, LiquiditySource>` ISI.
     ///
     /// Add new XYK Liquidity Pool for DEX with given `TokenPair`.
-    pub fn create_xyk_pool(
-        token_pair_id: <TokenPair as Identifiable>::Id,
-        // pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
-    ) -> Instruction {
+    pub fn create_xyk_pool(token_pair_id: <TokenPair as Identifiable>::Id) -> Instruction {
         let domain_name = token_pair_id.dex_id.domain_name.clone();
-        let asset_name = format!(
-            "PSWAP XYK {}-{}",
-            &token_pair_id.base_asset.name, &token_pair_id.target_asset.name
-        );
+        let asset_name = format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol());
         let pswap_asset_definition =
             AssetDefinition::new(AssetDefinitionId::new(&asset_name, &domain_name));
         let account_name = format!(
-            "PSWAP XYK {}-{} STORE",
-            &token_pair_id.base_asset.name, &token_pair_id.target_asset.name,
+            "{} XYK {}",
+            STORAGE_ACCOUNT_NAME,
+            token_pair_id.get_symbol()
         );
         let storage_account = Account::new(&account_name, &domain_name);
-
+        // TODO: add checking for existing xyk pool for pair
         Instruction::If(
             Box::new(Instruction::ExecuteQuery(IrohaQuery::GetTokenPair(
                 GetTokenPair {
@@ -462,18 +478,19 @@ pub mod isi {
                 },
             ))),
             Box::new(Instruction::Sequence(vec![
+                // register storage account for pool
                 Register {
-                    // register storage account
                     object: pswap_asset_definition.clone(),
                     destination_id: domain_name.clone(),
                 }
                 .into(),
+                // register asset definition for pswap
                 Register {
                     object: storage_account.clone(),
                     destination_id: domain_name.clone(),
                 }
                 .into(),
-                // register asset definition
+                // create xyk pool for pair
                 Add {
                     object: LiquiditySource::new_xyk_pool(
                         token_pair_id.clone(),
@@ -496,9 +513,13 @@ pub mod isi {
             authority: <Account as Identifiable>::Id,
             world_state_view: &mut WorldStateView,
         ) -> Result<(), String> {
-            PermissionInstruction::CanManageDEX(authority).execute(world_state_view)?;
             let liquidity_source = self.object;
             let token_pair_id = &liquidity_source.id.token_pair_id;
+            PermissionInstruction::CanManageDEX(
+                authority,
+                Some(token_pair_id.dex_id.domain_name.clone()),
+            )
+            .execute(world_state_view)?;
             let token_pair = get_token_pair_mut(token_pair_id, world_state_view)?;
             match token_pair
                 .liquidity_sources
@@ -508,7 +529,6 @@ pub mod isi {
                     Err("liquidity source already exists for token pair".to_owned())
                 }
                 Entry::Vacant(entry) => {
-                    // TODO: register pswap token for this pool
                     entry.insert(liquidity_source);
                     Ok(())
                 }
@@ -525,6 +545,7 @@ pub mod isi {
         }
     }
 
+    /// Constructor if `AddLiquidityToXYKPool` ISI.
     pub fn xyk_pool_add_liquidity(
         liquidity_source_id: <LiquiditySource as Identifiable>::Id,
         amount_a_desired: String,
@@ -541,6 +562,15 @@ pub mod isi {
         ))
     }
 
+    /// Core logic of `AddLiquidityToXYKPool` ISI, called by its `execute` function.
+    ///
+    /// `liquidity_source_id` - should be xyk pool.
+    /// `amount_a_desired` - desired base asset quantity (maximum) to be deposited.
+    /// `amount_b_desired` - desired target asset quantity (maximum) to be deposited.
+    /// `amount_a_min` - lower bound for base asset quantity to be deposited.
+    /// `amount_b_min` - lower bound for target asset quantity to be deposited.
+    /// `to` - account to receive liquidity tokens for deposit.
+    /// `authority` - permorms the operation, actual tokens are withdrawn from this account.
     fn xyk_pool_add_liquidity_execute(
         liquidity_source_id: <LiquiditySource as Identifiable>::Id,
         amount_a_desired: String,
@@ -551,13 +581,11 @@ pub mod isi {
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        //let domain_name = &liquidity_source_id.token_pair_id.dex_id.domain_name;
         let liquidity_source =
             get_liquidity_source(&liquidity_source_id, world_state_view)?.clone();
         let token_pair_id = &liquidity_source_id.token_pair_id;
-        let dex = get_dex(&token_pair_id.dex_id.domain_name, world_state_view)?;
 
-        let (reserve_a, reserve_b, k, total_supply) = if let LiquiditySourceData::XYKPool {
+        if let LiquiditySourceData::XYKPool {
             pswap_asset_definition_id,
             storage_account_id,
             pswap_total_supply,
@@ -578,7 +606,6 @@ pub mod isi {
                 BigDecimal::from_str(&amount_a_min).map_err(|_| "parsing decimal failed")?,
                 BigDecimal::from_str(&amount_b_min).map_err(|_| "parsing decimal failed")?,
             )?;
-            //todo!("transfer target must be pool storage account");
             transfer_from(
                 token_pair_id.base_asset.clone(),
                 authority.clone(),
@@ -605,33 +632,27 @@ pub mod isi {
                 BigDecimal::from_str(&k_last).map_err(|_| "parsing decimal failed")?,
                 None,
                 BigDecimal::from_str(&pswap_total_supply).map_err(|_| "parsing decimal failed")?,
-                authority,
+                // authority,
                 world_state_view,
             )?;
-            // update values in liquidity pool
-            (
-                reserve_a.to_string(),
-                reserve_b.to_string(),
-                k.to_string(),
-                total_supply.to_string(),
-            )
+            // update state of the pool
+            if let LiquiditySourceData::XYKPool {
+                pswap_total_supply,
+                base_asset_amount,
+                target_asset_amount,
+                k_last,
+                ..
+            } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
+            {
+                *pswap_total_supply = total_supply.to_string();
+                *base_asset_amount = reserve_a.to_string();
+                *target_asset_amount = reserve_b.to_string();
+                *k_last = k.to_string();
+            };
+            Ok(())
         } else {
-            return Err("wrong liquidity source: adding liquidity to xyk pool".to_owned());
-        };
-        if let LiquiditySourceData::XYKPool {
-            pswap_total_supply,
-            base_asset_amount,
-            target_asset_amount,
-            k_last,
-            ..
-        } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
-        {
-            *pswap_total_supply = total_supply;
-            *base_asset_amount = reserve_a;
-            *target_asset_amount = reserve_b;
-            *k_last = k;
+            Err("wrong liquidity source: adding liquidity to xyk pool".to_owned())
         }
-        Ok(())
     }
 
     /// Based on given reserves, desired and minimal amounts to add liquidity, either return
@@ -663,7 +684,7 @@ pub mod isi {
                     let amount_a_optimal =
                         xyk_pool_quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
                     // if !(amount_a_optimal <= amount_a_desired) {return Err("assertion".to_owned())}
-                    assert!(amount_a_optimal <= amount_a_desired); // TODO: don't use assert
+                    assert!(amount_a_optimal <= amount_a_desired); // TODO: consider not using assert
                     if !(amount_a_optimal >= amount_a_min) {
                         return Err("insufficient a amount".to_owned());
                     }
@@ -673,7 +694,7 @@ pub mod isi {
         )
     }
 
-    /// Given some amount of an Asset and pair reserves, returns an equivalent amount of the other Asset.
+    /// Given some amount of an asset and pair reserves, returns an equivalent amount of the other Asset.
     fn xyk_pool_quote(
         amount_a: BigDecimal,
         reserve_a: BigDecimal,
@@ -688,6 +709,7 @@ pub mod isi {
         Ok(amount_a.mul(reserve_b) / reserve_a) // calculate amount_b via proportion
     }
 
+    /// Helper function for performing token transfers.
     fn transfer_from(
         token: <AssetDefinition as Identifiable>::Id,
         from: <Account as Identifiable>::Id,
@@ -696,14 +718,14 @@ pub mod isi {
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        let quantity: u32 = 42; // TODO: convertion
+        let quantity = bigdecimal_to_quantity(value); // TODO: convertion
         let asset_id = AssetId::new(token, from.clone());
         AccountInstruction::TransferAsset(from, to, Asset::with_quantity(asset_id, quantity))
             .execute(authority, world_state_view)
     }
 
     /// Mint pswap tokens representing liquidity in pool for depositing account.
-    /// returns ()
+    /// returns (reserve_a, reserve_b, k_last, total_supply)
     fn mint_pswap_with_fee(
         pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
         to: <Account as Identifiable>::Id,
@@ -714,7 +736,7 @@ pub mod isi {
         k_last: BigDecimal,
         fee_to: Option<<Account as Identifiable>::Id>,
         total_supply: BigDecimal,
-        authority: <Account as Identifiable>::Id,
+        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(BigDecimal, BigDecimal, BigDecimal, BigDecimal), String> {
         let (mut k_last, total_supply) = mint_pswap_fee(
@@ -723,25 +745,27 @@ pub mod isi {
             reserve_b.clone(),
             k_last.clone(),
             fee_to.clone(),
-            authority.clone(),
+            total_supply.clone(),
+            // authority.clone(),
             world_state_view,
         )?;
 
-        let mut liquidity = BigDecimal::from(0);
-        if total_supply == BigDecimal::from(0) {
+        let liquidity;
+        let total_supply = if total_supply == BigDecimal::from(0) {
             liquidity = amount_a
                 .clone()
                 .mul(amount_b.clone())
                 .sqrt()
                 .ok_or("negative value provided")?
                 - BigDecimal::from(MINIMUM_LIQUIDITY);
-            //TODO: does minimum liquidity needs to be locked?
-            // mint (address(0), MINIMUM_LIQUIDITY)
-            todo!("if min liquditity is not locked, total_supply will not change correctly, need to mint to zero address!")
+            //TODO: does minimum liquidity need to be locked?
+            // mint (address(0), MINIMUM_LIQUIDITY), equivalent to just raising total_supply:
+            BigDecimal::from(MINIMUM_LIQUIDITY)
         } else {
             liquidity = (amount_a.clone().mul(total_supply.clone()) / reserve_a)
                 .min(amount_b.clone().mul(total_supply.clone()) / reserve_b);
-        }
+            total_supply
+        };
         if !(liquidity > BigDecimal::from(0)) {
             return Err("insufficient liquidity minted".to_owned());
         }
@@ -750,10 +774,10 @@ pub mod isi {
             to,
             liquidity,
             total_supply,
-            authority,
+            // authority,
             world_state_view,
         )?;
-        let (mut reserve_a, mut reserve_b) = (amount_a, amount_b);
+        let (reserve_a, reserve_b) = (amount_a, amount_b);
         if fee_to.is_some() {
             k_last = reserve_a.clone().mul(reserve_b.clone());
         }
@@ -767,10 +791,10 @@ pub mod isi {
         reserve_b: BigDecimal,
         k_last: BigDecimal,
         fee_to: Option<<Account as Identifiable>::Id>,
-        authority: <Account as Identifiable>::Id,
+        mut total_supply: BigDecimal,
+        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(BigDecimal, BigDecimal), String> {
-        let mut total_supply = BigDecimal::from(0);
         if let Some(fee_to) = fee_to {
             if k_last != BigDecimal::from(0) {
                 let root_k = reserve_a
@@ -789,8 +813,8 @@ pub mod isi {
                             asset_definition_id,
                             fee_to,
                             liquidity,
-                            total_supply,
-                            authority,
+                            total_supply.clone(),
+                            // authority,
                             world_state_view,
                         )?;
                     }
@@ -802,66 +826,65 @@ pub mod isi {
         Ok((k_last, total_supply))
     }
 
-    ///
-    /// returns total_supply
+    /// returns (total_supply)
     fn mint_pswap(
         asset_definition_id: <AssetDefinition as Identifiable>::Id,
         to: <Account as Identifiable>::Id,
         value: BigDecimal,
         total_supply: BigDecimal,
-        authority: <Account as Identifiable>::Id,
+        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<BigDecimal, String> {
-        let quantity: u32 = 42; // TODO: conversion
+        let quantity = bigdecimal_to_quantity(value.clone());
         let asset_id = AssetId::new(asset_definition_id, to);
-        AssetInstruction::MintAsset(quantity, asset_id).execute(authority, world_state_view)?;
+        mint_asset_unchecked(asset_id, quantity, world_state_view)?;
         Ok(total_supply + value)
     }
 
-    /// Register new `Account` in domain. This function should
-    /// be called from contract which performs necessary permission checks.
-    fn register_account_unchecked(
-        account: Account,
-        world_state_view: &mut WorldStateView,
-    ) -> Result<(), String> {
-        let domain = get_domain_mut(&account.id.domain_name, world_state_view)?;
-        match domain.accounts.entry(account.id.clone()) {
-            Entry::Vacant(entry) => {
-                entry.insert(account);
-                Ok(())
-            }
-            Entry::Occupied(_) => Err("account already exists".to_owned()),
-        }
+    /// Temporary function to map BigDecimal value to iroha quantity (u32).
+    /// Panics on inappropriate values, Decimal places are plainly dismissed.
+    fn bigdecimal_to_quantity(value: BigDecimal) -> u32 {
+        let double: f64 = value.to_string().parse().unwrap();
+        double as u32
     }
 
-    /// Register new `Asset` in domain. This function should
-    /// be called from contract which performs necessary permission checks.
-    fn register_asset_unchecked(
-        asset_definition: AssetDefinition,
+    /// Temporary function to map iroha quantity (u32) to BigDecimal.
+    fn _quantity_to_bigdecimal(value: u32) -> BigDecimal {
+        BigDecimal::from(value)
+    }
+
+    fn mint_asset_unchecked(
+        asset_id: <Asset as Identifiable>::Id,
+        quantity: u32,
+        //authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        let domain = get_domain_mut(&asset_definition.id.domain_name, world_state_view)?;
-        match domain.asset_definitions.entry(asset_definition.id.clone()) {
-            Entry::Vacant(entry) => {
-                entry.insert(asset_definition);
-                Ok(())
+        world_state_view
+            .asset_definition(&asset_id.definition_id)
+            .ok_or("Failed to find asset.")?;
+        match world_state_view.asset(&asset_id) {
+            Some(asset) => {
+                asset.quantity += quantity;
             }
-            Entry::Occupied(_) => Err("asset definition already exists".to_owned()),
+            None => world_state_view.add_asset(Asset::with_quantity(asset_id.clone(), quantity)),
         }
+        Ok(())
     }
 
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::dex::query::*;
+        use crate::account::query::*;
         use crate::peer::PeerId;
-        use crate::permission::{permission_asset_definition_id, Permission};
+        use crate::permission::*;
         use crate::query::QueryResult;
         use std::collections::BTreeMap;
 
         struct TestKit {
             world_state_view: WorldStateView,
             root_account_id: <Account as Identifiable>::Id,
+            dex_owner_account_id: <Account as Identifiable>::Id,
+            domain_name: <Domain as Identifiable>::Id,
         }
 
         impl TestKit {
@@ -869,25 +892,57 @@ pub mod isi {
                 let domain_name = "Company".to_string();
                 let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
                 let mut asset_definitions = BTreeMap::new();
-                let asset_definition_id = permission_asset_definition_id();
+                let mut accounts = BTreeMap::new();
+
+                let permission_asset_definition_id = permission_asset_definition_id();
                 asset_definitions.insert(
-                    asset_definition_id.clone(),
-                    AssetDefinition::new(asset_definition_id.clone()),
+                    permission_asset_definition_id.clone(),
+                    AssetDefinition::new(permission_asset_definition_id.clone()),
                 );
-                let account_id = AccountId::new("root", &domain_name);
+
+                let root_account_id = AccountId::new("root", &domain_name);
                 let asset_id = AssetId {
-                    definition_id: asset_definition_id,
-                    account_id: account_id.clone(),
+                    definition_id: permission_asset_definition_id.clone(),
+                    account_id: root_account_id.clone(),
                 };
                 let asset = Asset::with_permission(asset_id.clone(), Permission::Anything);
                 let mut account = Account::with_signatory(
-                    &account_id.name,
-                    &account_id.domain_name,
+                    &root_account_id.name,
+                    &root_account_id.domain_name,
                     key_pair.public_key.clone(),
                 );
+                account.assets.insert(asset_id.clone(), asset.clone());
+                accounts.insert(root_account_id.clone(), account);
+
+                let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+                let dex_owner_account_id = AccountId::new("dex owner", &domain_name);
+                let asset_id = AssetId {
+                    definition_id: permission_asset_definition_id.clone(),
+                    account_id: dex_owner_account_id.clone(),
+                };
+
+                let asset = Asset {
+                    id: asset_id.clone(),
+                    quantity: 0,
+                    big_quantity: 0,
+                    store: BTreeMap::new(),
+                    permissions: Permissions {
+                        origin: vec![
+                            Permission::ManageDEX(Some(dex_owner_account_id.domain_name.clone())),
+                            Permission::RegisterAccount(None),
+                            Permission::RegisterAssetDefinition(None),
+                        ], // TODO: create constructor
+                    },
+                };
+                let mut account = Account::with_signatory(
+                    &dex_owner_account_id.name,
+                    &dex_owner_account_id.domain_name,
+                    key_pair.public_key.clone(),
+                );
+
                 account.assets.insert(asset_id.clone(), asset);
-                let mut accounts = BTreeMap::new();
-                accounts.insert(account_id.clone(), account);
+                accounts.insert(dex_owner_account_id.clone(), account);
+
                 let domain = Domain {
                     name: domain_name.clone(),
                     accounts,
@@ -907,7 +962,9 @@ pub mod isi {
                 ));
                 TestKit {
                     world_state_view,
-                    root_account_id: account_id,
+                    root_account_id,
+                    dex_owner_account_id,
+                    domain_name,
                 }
             }
         }
@@ -915,41 +972,13 @@ pub mod isi {
         #[test]
         fn test_initialize_dex_should_pass() {
             let mut testkit = TestKit::new();
-            // create dex owner account
-            let dex_owner_public_key = KeyPair::generate()
-                .expect("Failed to generate KeyPair.")
-                .public_key;
-            let domain_name = Name::from("Company");
-            let mut dex_owner_account =
-                Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
-
-            // create permissions to operate any dex
-            let asset_definition = permission_asset_definition_id();
-            let asset_id = AssetId {
-                definition_id: asset_definition,
-                account_id: dex_owner_account.id.clone(),
-            };
-            let manage_dex_permission =
-                Asset::with_permission(asset_id.clone(), Permission::ManageDEX);
-            dex_owner_account
-                .assets
-                .insert(asset_id.clone(), manage_dex_permission);
+            let domain_name = testkit.domain_name.clone();
 
             // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
-            let domain = world_state_view
-                .domain(&domain_name)
-                .expect("domain not found")
-                .clone();
 
-            // register dex owner account
-            let register_account = domain.register_account(dex_owner_account.clone());
-            register_account
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register dex owner account");
-
-            initialize_dex(&domain_name, dex_owner_account.id.clone())
-                .execute(dex_owner_account.id.clone(), world_state_view)
+            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
+                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
                 .expect("failed to initialize dex");
 
             let dex_query_result =
@@ -970,11 +999,12 @@ pub mod isi {
         #[test]
         fn test_initialize_dex_should_fail_with_permission_not_found() {
             let mut testkit = TestKit::new();
+            let domain_name = testkit.domain_name.clone();
+
             // create dex owner account
             let dex_owner_public_key = KeyPair::generate()
                 .expect("Failed to generate KeyPair.")
                 .public_key;
-            let domain_name = Name::from("Company");
             let dex_owner_account =
                 Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
 
@@ -991,41 +1021,16 @@ pub mod isi {
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register dex owner account");
 
-            assert_eq!(
-                initialize_dex(
-                    &domain_name,
-                    dex_owner_account.id.clone(),
-                ).execute(
-                    dex_owner_account.id.clone(),
-                    world_state_view
-                ).unwrap_err(),
-                format!("Error: Permission not found., CanManageDEX(Id {{ name: \"{}\", domain_name: \"{}\" }})",
-                        "dex_owner", &domain_name)
-            );
+            assert!(initialize_dex(&domain_name, dex_owner_account.id.clone(),)
+                .execute(dex_owner_account.id.clone(), world_state_view)
+                .unwrap_err()
+                .contains("Error: Permission not found."));
         }
 
         #[test]
-        fn create_and_delete_token_pair_should_pass() {
+        fn test_create_and_delete_token_pair_should_pass() {
             let mut testkit = TestKit::new();
-            // create dex owner account
-            let dex_owner_public_key = KeyPair::generate()
-                .expect("Failed to generate KeyPair.")
-                .public_key;
-            let domain_name = Name::from("Company");
-            let mut dex_owner_account =
-                Account::with_signatory("dex_owner", &domain_name, dex_owner_public_key);
-
-            // create permissions to operate any dex
-            let asset_definition = permission_asset_definition_id();
-            let asset_id = AssetId {
-                definition_id: asset_definition,
-                account_id: dex_owner_account.id.clone(),
-            };
-            let manage_dex_permission =
-                Asset::with_permission(asset_id.clone(), Permission::ManageDEX);
-            dex_owner_account
-                .assets
-                .insert(asset_id.clone(), manage_dex_permission);
+            let domain_name = testkit.domain_name.clone();
 
             // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
@@ -1034,15 +1039,9 @@ pub mod isi {
                 .expect("domain not found")
                 .clone();
 
-            // register dex owner account
-            let register_account = domain.register_account(dex_owner_account.clone());
-            register_account
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register dex owner account");
-
             // initialize dex in domain
-            initialize_dex(&domain_name, dex_owner_account.id.clone())
-                .execute(dex_owner_account.id.clone(), world_state_view)
+            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
+                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
                 .expect("failed to initialize dex");
 
             // register assets in domain
@@ -1062,7 +1061,7 @@ pub mod isi {
                 asset_definition_b.id.clone(),
                 &domain_name,
             )
-            .execute(dex_owner_account.id.clone(), world_state_view)
+            .execute(testkit.dex_owner_account_id.clone(), world_state_view)
             .expect("create token pair failed");
 
             let token_pair_id = TokenPairId::new(
@@ -1070,6 +1069,7 @@ pub mod isi {
                 asset_definition_a.id.clone(),
                 asset_definition_b.id.clone(),
             );
+            // TODO: rewrite into iroha query calls
             let token_pair = query_token_pair(token_pair_id.clone(), world_state_view)
                 .expect("failed to query token pair");
             assert_eq!(&token_pair_id, &token_pair.id);
@@ -1093,7 +1093,7 @@ pub mod isi {
             assert_eq!(token_pair_count, 1);
 
             remove_token_pair(token_pair_id.clone())
-                .execute(dex_owner_account.id.clone(), world_state_view)
+                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
                 .expect("remove token pair failed");
 
             if let QueryResult::GetTokenPairList(token_pair_list_result) =
@@ -1111,26 +1111,287 @@ pub mod isi {
                 .expect("failed to query token pair count");
             assert_eq!(token_pair_count, 0);
         }
+
+        #[test]
+        fn test_xyk_pool_add_liquidity_should_pass() {
+            let mut testkit = TestKit::new();
+            let domain_name = testkit.domain_name.clone();
+
+            // get world state view and dex domain
+            let world_state_view = &mut testkit.world_state_view;
+            let domain = world_state_view
+                .read_domain(&domain_name)
+                .expect("domain not found")
+                .clone();
+
+            // initialize dex in domain
+            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
+                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
+                .expect("failed to initialize dex");
+
+            // register assets in domain
+            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("XOR", "Company"));
+            domain
+                .register_asset(asset_definition_a.clone())
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to register asset");
+            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("DOT", "Company"));
+            domain
+                .register_asset(asset_definition_b.clone())
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to register asset");
+
+            // mint tokens to account
+            let asset_a_id = AssetId::new(
+                asset_definition_a.id.clone(),
+                testkit.root_account_id.clone(),
+            );
+            let asset_b_id = AssetId::new(
+                asset_definition_b.id.clone(),
+                testkit.root_account_id.clone(),
+            );
+            Mint::new(5000u32, asset_a_id.clone())
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("mint asset failed");
+            Mint::new(7000u32, asset_b_id.clone())
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("mint asset failed");
+
+            // register pair for registered assets
+            create_token_pair(
+                asset_definition_a.id.clone(),
+                asset_definition_b.id.clone(),
+                &domain_name,
+            )
+            .execute(testkit.dex_owner_account_id.clone(), world_state_view)
+            .expect("create token pair failed");
+
+            let token_pair_id = TokenPairId::new(
+                DEXId::new(&domain_name),
+                asset_definition_a.id.clone(),
+                asset_definition_b.id.clone(),
+            );
+
+            // initialize xyk pool for token pair
+            create_xyk_pool(token_pair_id.clone())
+                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
+                .expect("create xyk pool failed");
+
+            let xyk_pool_id =
+                LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
+
+            let storage_account_id_test = AccountId::new(
+                &format!(
+                    "{} XYK {}",
+                    STORAGE_ACCOUNT_NAME,
+                    &token_pair_id.get_symbol()
+                ),
+                &domain_name,
+            );
+
+            let pswap_asset_definition_id_test = AssetDefinitionId::new(
+                &format!("{} XYK {}", PSWAP_ASSET_NAME, &token_pair_id.get_symbol()),
+                &domain_name,
+            );
+
+            // add minted tokens to the pool from account
+            xyk_pool_add_liquidity(
+                xyk_pool_id.clone(),
+                BigDecimal::from(5000).to_string(),
+                BigDecimal::from(7000).to_string(),
+                BigDecimal::from(4000).to_string(),
+                BigDecimal::from(6000).to_string(),
+            )
+            .execute(testkit.root_account_id.clone(), world_state_view)
+            .expect("add liquidity failed");
+
+            if let QueryResult::GetTokenPair(token_pair_result) =
+                GetTokenPair::build_request(token_pair_id.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let token_pair = token_pair_result.token_pair;
+                let xyk_pool = token_pair
+                    .liquidity_sources
+                    .get(&xyk_pool_id)
+                    .expect("failed to find xyk pool in token pair");
+                if let LiquiditySourceData::XYKPool {
+                    pswap_asset_definition_id,
+                    storage_account_id,
+                    pswap_total_supply,
+                    base_asset_amount,
+                    target_asset_amount,
+                    k_last,
+                } = xyk_pool.data.clone()
+                {
+                    assert_eq!(&pswap_asset_definition_id, &pswap_asset_definition_id_test);
+                    assert_eq!(&storage_account_id, &storage_account_id_test);
+                    assert!(
+                        BigDecimal::from_str(&pswap_total_supply).unwrap() > BigDecimal::from(0)
+                    );
+                    assert_eq!(&base_asset_amount, &BigDecimal::from(5000).to_string());
+                    assert_eq!(&target_asset_amount, &BigDecimal::from(7000).to_string());
+                    assert!(BigDecimal::from_str(&k_last).unwrap() >= BigDecimal::from(0));
+                } else {
+                    panic!("wrong data type of liquidity source")
+                }
+            } else {
+                panic!("wrong enum variant returned for GetTokenPair");
+            }
+
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(testkit.root_account_id.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&asset_a_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&asset_b_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 0);
+                assert_eq!(target_asset.quantity.clone(), 0);
+                let pswap_asset_id = AssetId::new(
+                    pswap_asset_definition_id_test.clone(),
+                    testkit.root_account_id.clone(),
+                );
+                let pswap_asset = account
+                    .assets
+                    .get(&pswap_asset_id)
+                    .expect("failed to get pswap asset");
+                assert!(pswap_asset.quantity > 0);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(storage_account_id_test.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let storage_asset_a_id = AssetId::new(
+                    asset_definition_a.id.clone(),
+                    storage_account_id_test.clone(),
+                );
+                let storage_asset_b_id = AssetId::new(
+                    asset_definition_b.id.clone(),
+                    storage_account_id_test.clone(),
+                );
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&storage_asset_a_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&storage_asset_b_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 5000);
+                assert_eq!(target_asset.quantity.clone(), 7000);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+        }
+
+        // TODO: need to sync actual transfer amounts with saved state in terms of precision - rounding
+        // TODO: tests with multiple consecutive AddLiquidity
+        // TODO: tests for AddLiquidity with fee
+
+        #[test]
+        fn test_mint_pswap_should_pass() {
+            let mut testkit = TestKit::new();
+            let world_state_view = &mut testkit.world_state_view;
+            let domain_name = testkit.domain_name.clone();
+            let domain = world_state_view
+                .domain(&domain_name)
+                .expect("domain not found")
+                .clone();
+            let account_public_key = KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key;
+            let account = Account::with_signatory("user", &domain_name, account_public_key);
+            let register_account = domain.register_account(account.clone());
+            register_account
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to register account");
+
+            // register assets
+            let base_asset_definition_id = AssetDefinitionId::new("XOR", &domain_name);
+            let target_asset_definition_id = AssetDefinitionId::new("DOT", &domain_name);
+            let dex_id = DEXId::new(&domain_name);
+            let token_pair_id =
+                TokenPairId::new(dex_id, base_asset_definition_id, target_asset_definition_id);
+            let asset_name = format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol());
+            let pswap_asset_definition_id = AssetDefinitionId::new(&asset_name, &domain_name);
+            domain
+                .register_asset(AssetDefinition::new(pswap_asset_definition_id.clone()))
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to register asset");
+
+            // set initial total supply to 100
+            let total_supply = BigDecimal::from(100);
+            let total_supply = mint_pswap(
+                pswap_asset_definition_id.clone(),
+                account.id.clone(),
+                BigDecimal::from(100),
+                total_supply,
+                world_state_view,
+            )
+            .expect("failed to mint pswap");
+            // after minting 100 pswap, total supply should be 200
+            assert_eq!(total_supply.clone(), BigDecimal::from(200));
+
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(account.id.clone())
+                    .query
+                    .execute(world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let account = account_result.account;
+                let pswap_asset_id =
+                    AssetId::new(pswap_asset_definition_id.clone(), account.id.clone());
+                let pswap_asset = account
+                    .assets
+                    .get(&pswap_asset_id)
+                    .expect("failed to get pswap asset");
+                // account should contain 100 pswap
+                assert_eq!(pswap_asset.quantity, 100);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+        }
+
+        #[test]
+        fn test_bigdecimal_quantity_conversions_should_pass() {
+            let origin = BigDecimal::from(11);
+            let target = bigdecimal_to_quantity(origin);
+            assert_eq!(target, 11u32);
+
+            let origin = BigDecimal::from(11.11);
+            let target = bigdecimal_to_quantity(origin);
+            assert_eq!(target, 11u32);
+
+            let origin = BigDecimal::from(0.11);
+            let target = bigdecimal_to_quantity(origin);
+            assert_eq!(target, 0u32);
+
+            let origin = BigDecimal::from(1000.0001);
+            let target = bigdecimal_to_quantity(origin);
+            assert_eq!(target, 1000u32);
+
+            let origin = BigDecimal::from_str(&u32::MAX.to_string()).expect("failed to parse u32");
+            let target = bigdecimal_to_quantity(origin);
+            assert_eq!(target, u32::MAX);
+        }
     }
 }
-
-// /// Iroha World State View module provides extensions for the `WorldStateView` for initializing
-// /// a DEX in particular Domain.
-// pub mod wsv {
-//     use super::*;
-//
-//     impl WorldStateView {
-//         /// Get `DEX` without an ability to modify it.
-//         pub fn read_dex(&self, domain_name: &str) -> Option<&DEX> {
-//             self.read_peer().domains.get(domain_name)?.dex.as_ref()
-//         }
-//
-//         /// Get `DEX` with an ability to modify it.
-//         pub fn dex(&mut self, domain_name: &str) -> Option<&mut DEX> {
-//             self.peer().domains.get_mut(domain_name)?.dex.as_mut()
-//         }
-//     }
-// }
 
 /// Query module provides functions for performing dex-related queries.
 pub mod query {
@@ -1237,6 +1498,7 @@ pub mod query {
     /// Get DEX information.
     #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
     pub struct GetDEX {
+        /// Domain name to which DEX belongs.
         pub domain_name: <Domain as Identifiable>::Id,
     }
     /// Result of `GetDEX` execution.
@@ -1317,6 +1579,7 @@ pub mod query {
     /// Get DEX information.
     #[derive(Clone, Debug, Io, IntoQuery, Encode, Decode)]
     pub struct GetTokenPair {
+        /// Identifier of TokenPair.
         pub token_pair_id: <TokenPair as Identifiable>::Id,
     }
     /// Result of `GetDEX` execution.
