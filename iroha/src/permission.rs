@@ -52,6 +52,12 @@ impl Permissions {
         }
     }
 
+    pub fn multiple(permissions: &[Permission]) -> Self {
+        Permissions {
+            origin: permissions.to_vec(),
+        }
+    }
+
     fn check(&self, permission: Permission) -> Result<(), String> {
         if self.origin.contains(&Permission::Anything) || self.origin.contains(&permission) {
             Ok(())

@@ -1,11 +1,11 @@
 //! This module contains functionality related to `DEX`.
 
 use crate::prelude::*;
-use bigdecimal::BigDecimal;
+use integer_sqrt::*;
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
+use std::cmp;
 use std::collections::BTreeMap;
-use std::str::FromStr;
 
 const PSWAP_ASSET_NAME: &str = "PSWAP";
 const STORAGE_ACCOUNT_NAME: &str = "STORE";
@@ -169,13 +169,13 @@ pub enum LiquiditySourceData {
         /// Account that is used to store exchanged tokens, i.e. actual liquidity.
         storage_account_id: <Account as Identifiable>::Id,
         /// Amount of active liquidity tokens.
-        pswap_total_supply: String,
+        pswap_total_supply: u32,
         /// Amount of base tokens in the pool (currently stored in storage account).
-        base_asset_amount: String,
+        base_asset_amount: u32,
         /// Amount of target tokens in the pool (currently stored in storage account).
-        target_asset_amount: String,
+        target_asset_amount: u32,
         /// K (constant product) value, updated by latest liquidity operation.
-        k_last: String,
+        k_last: u32,
     },
     /// Data representing state of the Order Book.
     OrderBook, // this option currently is to prevent `irrefutable if-let pattern` warning
@@ -203,10 +203,10 @@ impl LiquiditySource {
         let data = LiquiditySourceData::XYKPool {
             pswap_asset_definition_id,
             storage_account_id,
-            pswap_total_supply: BigDecimal::from(0).to_string(),
-            base_asset_amount: BigDecimal::from(0).to_string(),
-            target_asset_amount: BigDecimal::from(0).to_string(),
-            k_last: BigDecimal::from(0).to_string(),
+            pswap_total_supply: 0,
+            base_asset_amount: 0,
+            target_asset_amount: 0,
+            k_last: 0,
         };
         let id = LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
         LiquiditySource { id, data }
@@ -221,7 +221,6 @@ pub mod isi {
     use crate::isi::prelude::*;
     use crate::permission::isi::PermissionInstruction;
     use std::collections::btree_map::Entry;
-    use std::ops::Mul;
 
     /// Enumeration of all legal DEX related Instructions.
     #[derive(Clone, Debug, Io, Encode, Decode)]
@@ -236,13 +235,7 @@ pub mod isi {
         AddLiquiditySource(LiquiditySource, <TokenPair as Identifiable>::Id),
         /// Variant of instruction to deposit tokens to liquidity pool.
         /// `LiquiditySource` <-- Amount Base Desired, Amount Target Desired, Amount Base Min, Amount Target Min
-        AddLiquidityToXYKPool(
-            <LiquiditySource as Identifiable>::Id,
-            String,
-            String,
-            String,
-            String,
-        ),
+        AddLiquidityToXYKPool(<LiquiditySource as Identifiable>::Id, u32, u32, u32, u32),
     }
 
     impl DEXInstruction {
@@ -548,10 +541,10 @@ pub mod isi {
     /// Constructor if `AddLiquidityToXYKPool` ISI.
     pub fn xyk_pool_add_liquidity(
         liquidity_source_id: <LiquiditySource as Identifiable>::Id,
-        amount_a_desired: String,
-        amount_b_desired: String,
-        amount_a_min: String,
-        amount_b_min: String,
+        amount_a_desired: u32,
+        amount_b_desired: u32,
+        amount_a_min: u32,
+        amount_b_min: u32,
     ) -> Instruction {
         Instruction::DEX(DEXInstruction::AddLiquidityToXYKPool(
             liquidity_source_id,
@@ -573,10 +566,10 @@ pub mod isi {
     /// `authority` - permorms the operation, actual tokens are withdrawn from this account.
     fn xyk_pool_add_liquidity_execute(
         liquidity_source_id: <LiquiditySource as Identifiable>::Id,
-        amount_a_desired: String,
-        amount_b_desired: String,
-        amount_a_min: String,
-        amount_b_min: String,
+        amount_a_desired: u32,
+        amount_b_desired: u32,
+        amount_a_min: u32,
+        amount_b_min: u32,
         to: <Account as Identifiable>::Id,
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
@@ -594,17 +587,15 @@ pub mod isi {
             k_last,
         } = liquidity_source.data.clone()
         {
-            let reserve_a =
-                BigDecimal::from_str(&base_asset_amount).map_err(|_| "parsing decimal failed")?;
-            let reserve_b =
-                BigDecimal::from_str(&target_asset_amount).map_err(|_| "parsing decimal failed")?;
+            let reserve_a = base_asset_amount;
+            let reserve_b = target_asset_amount;
             let (amount_a, amount_b) = xyk_pool_get_optimal_deposit_amounts(
                 reserve_a.clone(),
                 reserve_b.clone(),
-                BigDecimal::from_str(&amount_a_desired).map_err(|_| "parsing decimal failed")?,
-                BigDecimal::from_str(&amount_b_desired).map_err(|_| "parsing decimal failed")?,
-                BigDecimal::from_str(&amount_a_min).map_err(|_| "parsing decimal failed")?,
-                BigDecimal::from_str(&amount_b_min).map_err(|_| "parsing decimal failed")?,
+                amount_a_desired,
+                amount_b_desired,
+                amount_a_min,
+                amount_b_min,
             )?;
             transfer_from(
                 token_pair_id.base_asset.clone(),
@@ -629,9 +620,9 @@ pub mod isi {
                 amount_b,
                 reserve_a,
                 reserve_b,
-                BigDecimal::from_str(&k_last).map_err(|_| "parsing decimal failed")?,
+                k_last,
                 None,
-                BigDecimal::from_str(&pswap_total_supply).map_err(|_| "parsing decimal failed")?,
+                pswap_total_supply,
                 // authority,
                 world_state_view,
             )?;
@@ -644,10 +635,10 @@ pub mod isi {
                 ..
             } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
             {
-                *pswap_total_supply = total_supply.to_string();
-                *base_asset_amount = reserve_a.to_string();
-                *target_asset_amount = reserve_b.to_string();
-                *k_last = k.to_string();
+                *pswap_total_supply = total_supply;
+                *base_asset_amount = reserve_a;
+                *target_asset_amount = reserve_b;
+                *k_last = k;
             };
             Ok(())
         } else {
@@ -659,54 +650,47 @@ pub mod isi {
     /// optimal values (needed to preserve reserves proportion) or error if it's not possible
     /// to keep proportion with proposed amounts.
     fn xyk_pool_get_optimal_deposit_amounts(
-        reserve_a: BigDecimal,
-        reserve_b: BigDecimal,
-        amount_a_desired: BigDecimal,
-        amount_b_desired: BigDecimal,
-        amount_a_min: BigDecimal,
-        amount_b_min: BigDecimal,
-    ) -> Result<(BigDecimal, BigDecimal), String> {
-        Ok(
-            if reserve_a == BigDecimal::from(0) && reserve_b == BigDecimal::from(0) {
-                (amount_a_desired, amount_b_desired)
-            } else {
-                let amount_b_optimal = xyk_pool_quote(
-                    amount_a_desired.clone(),
-                    reserve_a.clone(),
-                    reserve_b.clone(),
-                )?;
-                if amount_b_optimal <= amount_b_desired {
-                    if !(amount_b_optimal >= amount_b_min) {
-                        return Err("insufficient b amount".to_owned());
-                    }
-                    (amount_a_desired, amount_b_optimal)
-                } else {
-                    let amount_a_optimal =
-                        xyk_pool_quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
-                    // if !(amount_a_optimal <= amount_a_desired) {return Err("assertion".to_owned())}
-                    assert!(amount_a_optimal <= amount_a_desired); // TODO: consider not using assert
-                    if !(amount_a_optimal >= amount_a_min) {
-                        return Err("insufficient a amount".to_owned());
-                    }
-                    (amount_a_optimal, amount_b_desired)
+        reserve_a: u32,
+        reserve_b: u32,
+        amount_a_desired: u32,
+        amount_b_desired: u32,
+        amount_a_min: u32,
+        amount_b_min: u32,
+    ) -> Result<(u32, u32), String> {
+        Ok(if reserve_a == 0u32 && reserve_b == 0u32 {
+            (amount_a_desired, amount_b_desired)
+        } else {
+            let amount_b_optimal = xyk_pool_quote(
+                amount_a_desired.clone(),
+                reserve_a.clone(),
+                reserve_b.clone(),
+            )?;
+            if amount_b_optimal <= amount_b_desired {
+                if !(amount_b_optimal >= amount_b_min) {
+                    return Err("insufficient b amount".to_owned());
                 }
-            },
-        )
+                (amount_a_desired, amount_b_optimal)
+            } else {
+                let amount_a_optimal =
+                    xyk_pool_quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
+                assert!(amount_a_optimal <= amount_a_desired); // TODO: consider not using assert
+                if !(amount_a_optimal >= amount_a_min) {
+                    return Err("insufficient a amount".to_owned());
+                }
+                (amount_a_optimal, amount_b_desired)
+            }
+        })
     }
 
     /// Given some amount of an asset and pair reserves, returns an equivalent amount of the other Asset.
-    fn xyk_pool_quote(
-        amount_a: BigDecimal,
-        reserve_a: BigDecimal,
-        reserve_b: BigDecimal,
-    ) -> Result<BigDecimal, String> {
-        if !(amount_a > BigDecimal::from(0)) {
+    fn xyk_pool_quote(amount_a: u32, reserve_a: u32, reserve_b: u32) -> Result<u32, String> {
+        if !(amount_a > 0u32) {
             return Err("insufficient amount".to_owned());
         }
-        if !(reserve_a > BigDecimal::from(0) && reserve_b > BigDecimal::from(0)) {
+        if !(reserve_a > 0u32 && reserve_b > 0u32) {
             return Err("insufficient liquidity".to_owned());
         }
-        Ok(amount_a.mul(reserve_b) / reserve_a) // calculate amount_b via proportion
+        Ok((amount_a * reserve_b) / reserve_a) // calculate amount_b via proportion
     }
 
     /// Helper function for performing token transfers.
@@ -714,13 +698,12 @@ pub mod isi {
         token: <AssetDefinition as Identifiable>::Id,
         from: <Account as Identifiable>::Id,
         to: <Account as Identifiable>::Id,
-        value: BigDecimal,
+        value: u32,
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        let quantity = bigdecimal_to_quantity(value); // TODO: convertion
         let asset_id = AssetId::new(token, from.clone());
-        AccountInstruction::TransferAsset(from, to, Asset::with_quantity(asset_id, quantity))
+        AccountInstruction::TransferAsset(from, to, Asset::with_quantity(asset_id, value))
             .execute(authority, world_state_view)
     }
 
@@ -729,16 +712,16 @@ pub mod isi {
     fn mint_pswap_with_fee(
         pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
         to: <Account as Identifiable>::Id,
-        amount_a: BigDecimal,
-        amount_b: BigDecimal,
-        reserve_a: BigDecimal,
-        reserve_b: BigDecimal,
-        k_last: BigDecimal,
+        amount_a: u32,
+        amount_b: u32,
+        reserve_a: u32,
+        reserve_b: u32,
+        k_last: u32,
         fee_to: Option<<Account as Identifiable>::Id>,
-        total_supply: BigDecimal,
+        total_supply: u32,
         // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
-    ) -> Result<(BigDecimal, BigDecimal, BigDecimal, BigDecimal), String> {
+    ) -> Result<(u32, u32, u32, u32), String> {
         let (mut k_last, total_supply) = mint_pswap_fee(
             pswap_asset_definition_id.clone(),
             reserve_a.clone(),
@@ -751,22 +734,19 @@ pub mod isi {
         )?;
 
         let liquidity;
-        let total_supply = if total_supply == BigDecimal::from(0) {
-            liquidity = amount_a
-                .clone()
-                .mul(amount_b.clone())
-                .sqrt()
-                .ok_or("negative value provided")?
-                - BigDecimal::from(MINIMUM_LIQUIDITY);
+        let total_supply = if total_supply == 0u32 {
+            liquidity = (amount_a * amount_b).integer_sqrt() - MINIMUM_LIQUIDITY;
             //TODO: does minimum liquidity need to be locked?
             // mint (address(0), MINIMUM_LIQUIDITY), equivalent to just raising total_supply:
-            BigDecimal::from(MINIMUM_LIQUIDITY)
+            MINIMUM_LIQUIDITY
         } else {
-            liquidity = (amount_a.clone().mul(total_supply.clone()) / reserve_a)
-                .min(amount_b.clone().mul(total_supply.clone()) / reserve_b);
+            liquidity = cmp::min(
+                (amount_a * total_supply) / reserve_a,
+                (amount_b * total_supply) / reserve_b,
+            );
             total_supply
         };
-        if !(liquidity > BigDecimal::from(0)) {
+        if !(liquidity > 0u32) {
             return Err("insufficient liquidity minted".to_owned());
         }
         let total_supply = mint_pswap(
@@ -779,7 +759,7 @@ pub mod isi {
         )?;
         let (reserve_a, reserve_b) = (amount_a, amount_b);
         if fee_to.is_some() {
-            k_last = reserve_a.clone().mul(reserve_b.clone());
+            k_last = reserve_a * reserve_b;
         }
         Ok((reserve_a, reserve_b, k_last, total_supply))
     }
@@ -787,28 +767,23 @@ pub mod isi {
     /// returns (k_last, total_supply)
     fn mint_pswap_fee(
         asset_definition_id: <AssetDefinition as Identifiable>::Id,
-        reserve_a: BigDecimal,
-        reserve_b: BigDecimal,
-        k_last: BigDecimal,
+        reserve_a: u32,
+        reserve_b: u32,
+        k_last: u32,
         fee_to: Option<<Account as Identifiable>::Id>,
-        mut total_supply: BigDecimal,
+        mut total_supply: u32,
         // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
-    ) -> Result<(BigDecimal, BigDecimal), String> {
+    ) -> Result<(u32, u32), String> {
         if let Some(fee_to) = fee_to {
-            if k_last != BigDecimal::from(0) {
-                let root_k = reserve_a
-                    .mul(reserve_b)
-                    .sqrt()
-                    .ok_or("negative value provided")?;
-                let root_k_last = k_last.sqrt().ok_or("negative value provided")?;
+            if k_last != 0u32 {
+                let root_k = (reserve_a * reserve_b).integer_sqrt();
+                let root_k_last = k_last.integer_sqrt();
                 if root_k > root_k_last {
-                    let numerator = total_supply
-                        .clone()
-                        .mul(root_k.clone() - root_k_last.clone());
-                    let demonimator = root_k.mul(BigDecimal::from(5)) + root_k_last;
+                    let numerator = total_supply * (root_k - root_k_last);
+                    let demonimator = 5 * root_k + root_k_last;
                     let liquidity = numerator / demonimator;
-                    if liquidity > BigDecimal::from(0) {
+                    if liquidity > 0u32 {
                         total_supply = mint_pswap(
                             asset_definition_id,
                             fee_to,
@@ -820,8 +795,8 @@ pub mod isi {
                     }
                 }
             }
-        } else if k_last != BigDecimal::from(0) {
-            return Ok((BigDecimal::from(0), total_supply));
+        } else if k_last != 0u32 {
+            return Ok((0u32, total_supply));
         }
         Ok((k_last, total_supply))
     }
@@ -830,27 +805,14 @@ pub mod isi {
     fn mint_pswap(
         asset_definition_id: <AssetDefinition as Identifiable>::Id,
         to: <Account as Identifiable>::Id,
-        value: BigDecimal,
-        total_supply: BigDecimal,
+        value: u32,
+        total_supply: u32,
         // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
-    ) -> Result<BigDecimal, String> {
-        let quantity = bigdecimal_to_quantity(value.clone());
+    ) -> Result<u32, String> {
         let asset_id = AssetId::new(asset_definition_id, to);
-        mint_asset_unchecked(asset_id, quantity, world_state_view)?;
+        mint_asset_unchecked(asset_id, value, world_state_view)?;
         Ok(total_supply + value)
-    }
-
-    /// Temporary function to map BigDecimal value to iroha quantity (u32).
-    /// Panics on inappropriate values, Decimal places are plainly dismissed.
-    fn bigdecimal_to_quantity(value: BigDecimal) -> u32 {
-        let double: f64 = value.to_string().parse().unwrap();
-        double as u32
-    }
-
-    /// Temporary function to map iroha quantity (u32) to BigDecimal.
-    fn _quantity_to_bigdecimal(value: u32) -> BigDecimal {
-        BigDecimal::from(value)
     }
 
     fn mint_asset_unchecked(
@@ -921,19 +883,14 @@ pub mod isi {
                     account_id: dex_owner_account_id.clone(),
                 };
 
-                let asset = Asset {
-                    id: asset_id.clone(),
-                    quantity: 0,
-                    big_quantity: 0,
-                    store: BTreeMap::new(),
-                    permissions: Permissions {
-                        origin: vec![
-                            Permission::ManageDEX(Some(dex_owner_account_id.domain_name.clone())),
-                            Permission::RegisterAccount(None),
-                            Permission::RegisterAssetDefinition(None),
-                        ], // TODO: create constructor
-                    },
-                };
+                let asset = Asset::with_permissions(
+                    asset_id.clone(),
+                    &[
+                        Permission::ManageDEX(Some(dex_owner_account_id.domain_name.clone())),
+                        Permission::RegisterAccount(None),
+                        Permission::RegisterAssetDefinition(None),
+                    ],
+                );
                 let mut account = Account::with_signatory(
                     &dex_owner_account_id.name,
                     &dex_owner_account_id.domain_name,
@@ -1195,15 +1152,9 @@ pub mod isi {
             );
 
             // add minted tokens to the pool from account
-            xyk_pool_add_liquidity(
-                xyk_pool_id.clone(),
-                BigDecimal::from(5000).to_string(),
-                BigDecimal::from(7000).to_string(),
-                BigDecimal::from(4000).to_string(),
-                BigDecimal::from(6000).to_string(),
-            )
-            .execute(testkit.root_account_id.clone(), world_state_view)
-            .expect("add liquidity failed");
+            xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("add liquidity failed");
 
             if let QueryResult::GetTokenPair(token_pair_result) =
                 GetTokenPair::build_request(token_pair_id.clone())
@@ -1227,12 +1178,10 @@ pub mod isi {
                 {
                     assert_eq!(&pswap_asset_definition_id, &pswap_asset_definition_id_test);
                     assert_eq!(&storage_account_id, &storage_account_id_test);
-                    assert!(
-                        BigDecimal::from_str(&pswap_total_supply).unwrap() > BigDecimal::from(0)
-                    );
-                    assert_eq!(&base_asset_amount, &BigDecimal::from(5000).to_string());
-                    assert_eq!(&target_asset_amount, &BigDecimal::from(7000).to_string());
-                    assert!(BigDecimal::from_str(&k_last).unwrap() >= BigDecimal::from(0));
+                    assert!(pswap_total_supply > 0u32);
+                    assert_eq!(base_asset_amount, 5000);
+                    assert_eq!(target_asset_amount, 7000);
+                    assert!(k_last == 0u32);
                 } else {
                     panic!("wrong data type of liquidity source")
                 }
@@ -1336,17 +1285,17 @@ pub mod isi {
                 .expect("failed to register asset");
 
             // set initial total supply to 100
-            let total_supply = BigDecimal::from(100);
+            let total_supply = 100u32;
             let total_supply = mint_pswap(
                 pswap_asset_definition_id.clone(),
                 account.id.clone(),
-                BigDecimal::from(100),
+                100u32,
                 total_supply,
                 world_state_view,
             )
             .expect("failed to mint pswap");
             // after minting 100 pswap, total supply should be 200
-            assert_eq!(total_supply.clone(), BigDecimal::from(200));
+            assert_eq!(total_supply.clone(), 200u32);
 
             if let QueryResult::GetAccount(account_result) =
                 GetAccount::build_request(account.id.clone())
@@ -1366,29 +1315,6 @@ pub mod isi {
             } else {
                 panic!("wrong enum variant returned for GetAccount");
             }
-        }
-
-        #[test]
-        fn test_bigdecimal_quantity_conversions_should_pass() {
-            let origin = BigDecimal::from(11);
-            let target = bigdecimal_to_quantity(origin);
-            assert_eq!(target, 11u32);
-
-            let origin = BigDecimal::from(11.11);
-            let target = bigdecimal_to_quantity(origin);
-            assert_eq!(target, 11u32);
-
-            let origin = BigDecimal::from(0.11);
-            let target = bigdecimal_to_quantity(origin);
-            assert_eq!(target, 0u32);
-
-            let origin = BigDecimal::from(1000.0001);
-            let target = bigdecimal_to_quantity(origin);
-            assert_eq!(target, 1000u32);
-
-            let origin = BigDecimal::from_str(&u32::MAX.to_string()).expect("failed to parse u32");
-            let target = bigdecimal_to_quantity(origin);
-            assert_eq!(target, u32::MAX);
         }
     }
 }

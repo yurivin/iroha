@@ -98,6 +98,18 @@ impl Asset {
         }
     }
 
+    /// Constructor with filled `permissions` field.
+    pub fn with_permissions(id: <Asset as Identifiable>::Id, permissions: &[Permission]) -> Self {
+        let permissions = Permissions::multiple(permissions);
+        Self {
+            id,
+            quantity: 0,
+            big_quantity: 0,
+            store: BTreeMap::new(),
+            permissions,
+        }
+    }
+
     /// Constructor of the `Mint<Asset, u32>` Iroha Special Instruction.
     pub fn mint(&self, object: u32) -> Mint<Asset, u32> {
         Mint {
