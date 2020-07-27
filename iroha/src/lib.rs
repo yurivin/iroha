@@ -19,7 +19,7 @@ mod kura;
 pub mod maintenance;
 mod merkle;
 pub mod peer;
-mod permission;
+pub mod permission;
 pub mod query;
 mod queue;
 pub mod sumeragi;
@@ -131,8 +131,20 @@ impl Iroha {
         };
         let bridge_permissions_asset =
             Asset::with_permission(bridge_admin_asset_id.clone(), Permission::Anything);
-        let bpk = PublicKey { inner: [52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
-        let bsk = PrivateKey { inner: vec![250, 199, 149, 157, 191, 231, 47, 5, 46, 90, 12, 60, 141, 101, 48, 242, 2, 176, 47, 216, 249, 245, 202, 53, 128, 236, 141, 235, 119, 151, 71, 158,     52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
+        let bpk = PublicKey {
+            inner: [
+                52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102,
+                51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239,
+            ],
+        };
+        let bsk = PrivateKey {
+            inner: vec![
+                250, 199, 149, 157, 191, 231, 47, 5, 46, 90, 12, 60, 141, 101, 48, 242, 2, 176, 47,
+                216, 249, 245, 202, 53, 128, 236, 141, 235, 119, 151, 71, 158, 52, 80, 113, 218,
+                85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143,
+                125, 160, 223, 33, 190, 90, 180, 224, 85, 239,
+            ],
+        };
         // println!("pk {:?}", bpk.inner);
         // println!("sk {:?}", bsk.inner);
 
@@ -194,86 +206,87 @@ impl Iroha {
         );
         let tx_sender = transactions_sender.clone();
         let cfg = config.clone();
-        // task::spawn(async move {
-        //     task::sleep(Duration::from_secs(5)).await;
-        //     let (pk, sk) = (bpk, bsk);
-        //     // let (pk, sk) = cfg.key_pair();
-        //     let peer_id = PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key);
-        //     // let isi = Instruction::Peer(PeerInstruction::AddDomain(
-        //     //     "saf".into(),
-        //     //     PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key),
-        //     // ));
-        //     let bridge_domain_name = "polkadot".to_string();
-        //     let bridge_def_id = BridgeDefinitionId {
-        //         name:  bridge_domain_name.clone(),
-        //     };
-        //     let bridge_def = BridgeDefinition {
-        //         id: bridge_def_id.clone(),
-        //         kind: BridgeKind::IClaim,
-        //         owner_account_id: bridge_admin_account_id.clone(),
-        //     };
-        //     let ext_asset = ExternalAsset {
-        //         bridge_id: BridgeId::new(&bridge_def_id.name),
-        //         name: "DOT".to_string(),
-        //         id: "DOT".to_string(),
-        //         decimals: 10,
-        //     };
-        //     let register_bridge = bridge::isi::register_bridge(peer_id, &bridge_def);
-        //     let register_client = bridge::isi::add_client(&bridge_def_id, pk.clone());
-        //     let dot_asset_def = AssetDefinition::new(AssetDefinitionId {
-        //         name: "DOT".to_string(),
-        //         domain_name:  bridge_domain_name.clone(),
-        //     });
-        //     let register_dot_asset = Register::new(dot_asset_def, bridge_domain_name.clone()).into();
-        //     let xor_asset_def = AssetDefinition::new(AssetDefinitionId {
-        //         name: "XOR".to_string(),
-        //         domain_name: "global".into(),
-        //     });
-        //     let register_xor_asset = Register::new(xor_asset_def.clone(), dmn.name.clone()).into();
-        //     let register_ext_asset = bridge::isi::register_external_asset(&ext_asset);
-        //     let mint_xor = Mint::new(
-        //         100u32,
-        //         AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
-        //     )
-        //     .into();
-        //     let bridge_account_id = AccountId::new("bridge", "polkadot");
-        //     let transfer_xor = Transfer::new(
-        //         account_id.clone(),
-        //         Asset::with_quantity(
-        //             AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
-        //             100,
-        //         ),
-        //         bridge_account_id.clone(),
-        //     )
-        //     .into();
-        //     let kp = KeyPair {
-        //         public_key: pk,
-        //         private_key: sk,
-        //     };
-        //     let payload = Payload {
-        //         instructions: vec![
-        //             register_xor_asset,
-        //             register_bridge,
-        //             register_client,
-        //             register_dot_asset,
-        //             register_ext_asset,
-        //             mint_xor,
-        //             transfer_xor,
-        //         ],
-        //         account_id: bridge_admin_account_id,
-        //         creation_time: SystemTime::now()
-        //             .duration_since(SystemTime::UNIX_EPOCH)
-        //             .expect("Failed to get System Time.")
-        //             .as_millis() as u64,
-        //         time_to_live_ms: 10000,
-        //     };
-        //     let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
-        //     let tx = AcceptedTransaction {
-        //         payload,
-        //         signatures: vec![sig],
-        //     };
-        //     tx_sender.send(tx).await;
-        // });
+        task::spawn(async move {
+            task::sleep(Duration::from_secs(5)).await;
+            let (pk, sk) = (bpk, bsk);
+            // let (pk, sk) = cfg.key_pair();
+            let peer_id = PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key);
+            // let isi = Instruction::Peer(PeerInstruction::AddDomain(
+            //     "saf".into(),
+            //     PeerId::new(&cfg.torii_configuration.torii_url, &cfg.public_key),
+            // ));
+            let bridge_domain_name = "polkadot".to_string();
+            let bridge_def_id = BridgeDefinitionId {
+                name: bridge_domain_name.clone(),
+            };
+            let bridge_def = BridgeDefinition {
+                id: bridge_def_id.clone(),
+                kind: BridgeKind::IClaim,
+                owner_account_id: bridge_admin_account_id.clone(),
+            };
+            let ext_asset = ExternalAsset {
+                bridge_id: BridgeId::new(&bridge_def_id.name),
+                name: "DOT".to_string(),
+                id: "DOT".to_string(),
+                decimals: 10,
+            };
+            let register_bridge = bridge::isi::register_bridge(peer_id, &bridge_def);
+            let register_client = bridge::isi::add_client(&bridge_def_id, pk.clone());
+            let dot_asset_def = AssetDefinition::new(AssetDefinitionId {
+                name: "DOT".to_string(),
+                domain_name: bridge_domain_name.clone(),
+            });
+            let register_dot_asset =
+                Register::new(dot_asset_def, bridge_domain_name.clone()).into();
+            let xor_asset_def = AssetDefinition::new(AssetDefinitionId {
+                name: "XOR".to_string(),
+                domain_name: "global".into(),
+            });
+            let register_xor_asset = Register::new(xor_asset_def.clone(), dmn.name.clone()).into();
+            let register_ext_asset = bridge::isi::register_external_asset(&ext_asset);
+            let mint_xor = Mint::new(
+                100u32,
+                AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
+            )
+            .into();
+            let bridge_account_id = AccountId::new("bridge", "polkadot");
+            let transfer_xor = Transfer::new(
+                account_id.clone(),
+                Asset::with_quantity(
+                    AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
+                    100,
+                ),
+                bridge_account_id.clone(),
+            )
+            .into();
+            let kp = KeyPair {
+                public_key: pk,
+                private_key: sk,
+            };
+            let payload = Payload {
+                instructions: vec![
+                    register_xor_asset,
+                    register_bridge,
+                    register_client,
+                    register_dot_asset,
+                    register_ext_asset,
+                    mint_xor,
+                    transfer_xor,
+                ],
+                account_id: bridge_admin_account_id,
+                creation_time: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Failed to get System Time.")
+                    .as_millis() as u64,
+                time_to_live_ms: 10000,
+            };
+            let sig = Signature::new(kp, &Vec::from(&payload)).unwrap();
+            let tx = AcceptedTransaction {
+                payload,
+                signatures: vec![sig],
+            };
+            tx_sender.send(tx).await;
+        });
         let kura = Kura::from_configuration(&config.kura_configuration, wsv_blocks_sender);
         let sumeragi = Arc::new(RwLock::new(
             Sumeragi::from_configuration(

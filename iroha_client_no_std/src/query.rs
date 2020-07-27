@@ -1,10 +1,10 @@
 //! This module contains query related Iroha functionality.
 
 use crate::crypto::Signature;
-use crate::{account, asset};
-// use iroha_derive::Io;
+use crate::{account, asset, domain, prelude::*};
 use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
+
 /// I/O ready structure to send queries.
 #[derive(Debug, Encode, Decode)]
 pub struct QueryRequest {
@@ -21,8 +21,12 @@ pub struct QueryRequest {
 pub enum IrohaQuery {
     /// Query all Assets related to the Account.
     GetAccountAssets(asset::query::GetAccountAssets),
+    /// Query all Assets with defined Definition related to the Account.
+    GetAccountAssetsWithDefinition(asset::query::GetAccountAssetsWithDefinition),
     /// Query Account information.
     GetAccount(account::query::GetAccount),
+    /// Query Domain information.
+    GetDomain(domain::query::GetDomain),
 }
 
 /// Result of queries execution.
@@ -30,6 +34,10 @@ pub enum IrohaQuery {
 pub enum QueryResult {
     /// Query all Assets related to the Account result.
     GetAccountAssets(asset::query::GetAccountAssetsResult),
+    /// Query all Assets with defined Definition related to the Account.
+    GetAccountAssetsWithDefinition(asset::query::GetAccountAssetsWithDefinitionResult),
     /// Query Account information.
     GetAccount(account::query::GetAccountResult),
+    /// Query Domain information.
+    GetDomain(domain::query::GetDomainResult),
 }

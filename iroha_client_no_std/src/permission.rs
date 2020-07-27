@@ -7,7 +7,7 @@ pub fn permission_asset_definition_id() -> AssetDefinitionId {
 
 #[derive(Clone, Debug, Default, Encode, Decode)]
 pub struct Permissions {
-    origin: Vec<Permission>,
+    pub origin: Vec<Permission>,
 }
 
 #[derive(Clone, Debug, Encode, Decode, PartialEq)]

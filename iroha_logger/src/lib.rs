@@ -115,6 +115,7 @@ pub mod config {
             if let Ok(date_time_format) = env::var(DATE_TIME_FORMAT) {
                 self.date_time_format = date_time_format;
             }
+            // self.max_log_level = LevelFilter::Off;
             Ok(())
         }
     }

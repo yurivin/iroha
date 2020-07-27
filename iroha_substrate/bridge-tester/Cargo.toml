@@ -1,0 +1,43 @@
+[package]
+name = "bridge-tester"
+version = "0.1.0"
+authors = ["Vladislav Markushin <negigic@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+substrate-api-client = { path = "../substrate-api-client" }
+#substrate-api-client = { git = "https://github.com/scs/substrate-api-client.git" }
+codec = { package = "parity-scale-codec", features = ["derive"], version = "1.0.0", default-features = false }
+iroha_client = { path = "../../iroha_client" }
+iroha = { path = "../../iroha" }
+async-std = { version = "1.5", features = ["attributes"] }
+
+[dependencies.sp-runtime]
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.sp-core]
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+package = "sp-core"
+default-features = false
+features = ["full_crypto"]
+
+
+#[dependencies.keyring]
+#version = '2.0.0-alpha.7'
+#package = "sp-keyring"
+
+#[dependencies.sp-core]
+#version = '2.0.0-alpha.7'
+#
+#[dependencies.sp-runtime]
+#version = '2.0.0-alpha.7'
+
+[dependencies.keyring]
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+package = "sp-keyring"

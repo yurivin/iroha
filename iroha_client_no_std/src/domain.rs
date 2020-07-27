@@ -49,3 +49,36 @@ pub mod isi {
         RegisterAsset(Name, AssetDefinition),
     }
 }
+
+/// Query module provides `IrohaQuery` Domain related implementations.
+pub mod query {
+    use super::*;
+    use crate::query::IrohaQuery;
+    use parity_scale_codec::{Decode, Encode};
+
+    /// Get information related to the domain with a specified `domain_name`.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetDomain {
+        /// Identification of an domain to find information about.
+        pub domain_name: <Domain as Identifiable>::Id,
+    }
+
+    /// Result of the `GetDomain` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetDomainResult {
+        /// Domain information.
+        pub domain: Domain,
+    }
+
+    impl GetDomain {
+        /// Build a `GetDomain` query in the form of a `QueryRequest`.
+        pub fn build_request(domain_name: <Domain as Identifiable>::Id) -> QueryRequest {
+            let query = GetDomain { domain_name };
+            QueryRequest {
+                timestamp: "".into(),
+                signature: Option::None,
+                query: IrohaQuery::GetDomain(query),
+            }
+        }
+    }
+}

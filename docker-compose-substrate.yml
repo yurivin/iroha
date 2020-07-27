@@ -17,3 +17,15 @@ services:
         source: ./.local
         target: /root/.local
     command: bash -c "cargo build --package node-template && ../../target/debug/node-template --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
+  dev-bin:
+    build: iroha_substrate/bin
+    container_name: node-template-bin
+#    working_dir: /var/www/iroha/iroha_substrate/bin
+    ports:
+      - "9944:9944"
+      - "888:888"
+    volumes:
+      - type: bind
+        source: ./.local
+        target: /root/.local
+    command: bash -c "./node-template --dev --ws-external" # & RUST_LOG=error ./iroha"
