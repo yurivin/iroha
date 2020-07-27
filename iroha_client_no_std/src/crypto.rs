@@ -184,7 +184,7 @@ impl Debug for Signature {
 /// Container for multiple signatures.
 #[derive(Debug, Clone, Encode, Decode, Default)]
 pub struct Signatures {
-    signatures: BTreeMap<PublicKey, Signature>,
+    pub signatures: BTreeMap<PublicKey, Signature>,
 }
 
 impl Signatures {

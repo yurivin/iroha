@@ -83,28 +83,14 @@ impl Torii {
     async fn http_listen(state: State<ToriiState>) -> Result<(), String> {
         use bytes::Bytes;
         use warp::Filter;
-        // type Bytes = Vec<u8>;
-        // let instruction = warp::post()
-        //     .and(warp::path("instruction"))
-        //     .and(warp::body::bytes())
-        //     .map(move |bytes: Bytes| {
-        //         println!("rcvd: {:?}", bytes);
-        //         let request = Request::new("/instruction".into(), bytes.to_vec());
-        //         let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
-        //         if let Response::Ok(data) = resp {
-        //             data
-        //         } else {
-        //             vec![]
-        //         }
-        //     });
         let route = warp::post()
             .and(warp::path::param())
-            // .and(warp::path("block"))
             .and(warp::body::bytes())
             .map(move |path: String, bytes: Bytes| {
                 println!("path: {}, rcvd: {:?}", path, bytes);
                 let request = Request::new(format!("/{}", path), bytes.to_vec());
-                let resp = async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
+                let resp =
+                    async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
                 if let Response::Ok(data) = resp {
                     data
                 } else {

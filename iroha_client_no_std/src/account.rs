@@ -16,7 +16,7 @@ pub struct Account {
     pub id: Id,
     /// Asset's in this `Account`.
     pub assets: BTreeMap<<Asset as Identifiable>::Id, Asset>,
-    signatories: Vec<PublicKey>,
+    pub signatories: Vec<PublicKey>,
 }
 
 impl Account {

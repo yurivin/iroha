@@ -200,8 +200,6 @@ pub mod isi {
 pub mod query {
     use super::*;
     use crate::query::IrohaQuery;
-    use chrono::Utc;
-    // use iroha_derive::{IntoQuery, Io};
     use parity_scale_codec::{Decode, Encode};
 
     /// To get the state of all assets in an account (a balance),
@@ -223,9 +221,42 @@ pub mod query {
         pub fn build_request(account_id: <Account as Identifiable>::Id) -> QueryRequest {
             let query = GetAccountAssets { account_id };
             QueryRequest {
-                timestamp: 0.to_string(), // Utc::now().timestamp_millis().to_string(),
+                timestamp: "".into(),
                 signature: Option::None,
                 query: IrohaQuery::GetAccountAssets(query),
+            }
+        }
+    }
+
+    /// To get the state of all assets in an account filtered by assets definition,
+    /// GetAccountAssetsWithDefinition query can be used.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetAccountAssetsWithDefinition {
+        account_id: <Account as Identifiable>::Id,
+        asset_definition_id: AssetDefinitionId,
+    }
+
+    /// Result of the `GetAccountAssetsWithDefinition` execution.
+    #[derive(Clone, Debug, Encode, Decode)]
+    pub struct GetAccountAssetsWithDefinitionResult {
+        /// Assets types which are needed to be included in query result.
+        pub assets: Vec<Asset>,
+    }
+
+    impl GetAccountAssetsWithDefinition {
+        /// Build a `GetAccountAssetsWithDefinition` query in the form of a `QueryRequest`.
+        pub fn build_request(
+            account_id: <Account as Identifiable>::Id,
+            asset_definition_id: AssetDefinitionId,
+        ) -> QueryRequest {
+            let query = GetAccountAssetsWithDefinition {
+                account_id,
+                asset_definition_id,
+            };
+            QueryRequest {
+                timestamp: "".to_string(),
+                signature: Option::None,
+                query: IrohaQuery::GetAccountAssetsWithDefinition(query),
             }
         }
     }
