@@ -53,7 +53,7 @@ impl Instruction {
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        match dbg!(self) {
+        match self {
             Instruction::Peer(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Domain(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Asset(origin) => Ok(origin.execute(authority, world_state_view)?),
