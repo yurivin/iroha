@@ -116,8 +116,8 @@ impl Iroha {
             account_id: account_id.clone(),
         };
         let asset = Asset::with_permission(asset_id.clone(), Permission::Anything);
-        println!("PK: {:?}", config.public_key.inner);
-        println!("SK: {:?}", config.private_key.inner);
+        // println!("PK: {:?}", config.public_key.inner);
+        // println!("SK: {:?}", config.private_key.inner);
         let mut account =
             Account::with_signatory(&account_id.name, &account_id.domain_name, config.public_key);
         account.assets.insert(asset_id, asset);
@@ -346,9 +346,7 @@ impl Iroha {
         let transactions_receiver = Arc::clone(&self.transactions_receiver);
         let queue = Arc::clone(&self.queue);
         let tx_handle = task::spawn(async move {
-            println!("enter");
             while let Some(transaction) = transactions_receiver.write().await.next().await {
-                println!("tx handle");
                 queue.write().await.push_pending_transaction(transaction);
             }
         });

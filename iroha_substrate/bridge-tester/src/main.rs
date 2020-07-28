@@ -4,7 +4,7 @@ use keyring::sr25519::sr25519::Pair as SrPair;
 
 use iroha::prelude::*;
 use iroha_client::{
-    client::{assets::by_account_id, Client},
+    client::{account::by_id, Client},
     config::Configuration,
 };
 use sp_core::crypto::Pair;
@@ -28,16 +28,19 @@ fn check_response_assets(
         let dot_amount = assets
             .iter()
             .find(|(_, asset)| asset.id.definition_id.name == "DOT")
-            .map(|asset| asset.quantity)
+            .map(|(_, asset)| asset.quantity)
             .unwrap_or(0);
         let xor_amount = assets
             .iter()
             .find(|(_, asset)| asset.id.definition_id.name == "XOR")
-            .map(|asset| asset.quantity)
+            .map(|(_, asset)| asset.quantity)
             .unwrap_or(0);
         assert_eq!(dot_amount, expected_dot_amount);
         assert_eq!(xor_amount, expected_xor_amount);
-        println!("{} account balance is: DOT: {}, XOR: {}", account.id, expected_dot_amount, expected_xor_amount);
+        println!(
+            "{} account balance is: DOT: {}, XOR: {}",
+            account.id, expected_dot_amount, expected_xor_amount
+        );
     } else {
         panic!("Test failed.");
     }
@@ -49,10 +52,10 @@ async fn main() {
         Configuration::from_path("config.json").expect("Failed to load configuration.");
     let mut iroha_client = Client::new(&configuration);
 
-    println!("Checking account balances before the swap...");
+    println!("[BRIDGE TEST] Checking account balances before the swap...");
     // check assets before the swap, but after the user sent transaction to the bridge
     let bridge_account_id = AccountId::new("bridge", "polkadot");
-    let get_bridge_account = by_account_id(bridge_account_id);
+    let get_bridge_account = by_id(bridge_account_id);
     let response = iroha_client
         .request(&get_bridge_account)
         .await
@@ -60,7 +63,7 @@ async fn main() {
     check_response_assets(&response, 0, 100);
 
     let user_account_id = AccountId::new("root".into(), "global");
-    let get_user_account = by_account_id(user_account_id);
+    let get_user_account = by_id(user_account_id);
     let response = iroha_client
         .request(&get_user_account)
         .await
@@ -75,16 +78,19 @@ async fn main() {
     let xt: UncheckedExtrinsicV4<_> =
         compose_extrinsic!(api.clone(), "TemplateModule", "fetch_blocks_signed");
 
-    println!("Sending transaction to substrate...");
+    println!("[BRIDGE TEST] Sending transaction to substrate...");
     let tx_hash = api
         .send_extrinsic(xt.hex_encode(), XtStatus::InBlock)
         .unwrap();
-    println!("Transaction got finalized. Hash: {:?}\n", tx_hash);
+    println!(
+        "[BRIDGE TEST] Transaction got finalized. Hash: {:?}\n",
+        tx_hash
+    );
 
-    println!("Waiting for all Iroha transactions to confirm...");
+    println!("[BRIDGE TEST] Waiting for all Iroha transactions to confirm...");
     async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
-    println!("Checking account balances after the swap...");
+    println!("[BRIDGE TEST] Checking account balances after the swap...");
     // check assets after the swap
     let response = iroha_client
         .request(&get_bridge_account)
@@ -98,5 +104,5 @@ async fn main() {
         .expect("Failed to send request.");
     check_response_assets(&response, 200, 0);
 
-    println!("Test passed!");
+    println!("[BRIDGE TEST] Test passed!");
 }

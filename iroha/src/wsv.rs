@@ -31,7 +31,6 @@ impl WorldStateView {
     /// Put `ValidBlock` of information with changes in form of **Iroha Special Instructions**
     /// into the world.
     pub fn put(&mut self, block: &CommittedBlock) {
-        println!("block stored!");
         for transaction in &block.transactions {
             if let Err(e) = &transaction.proceed(self) {
                 log::warn!("Failed to procced transaction on WSV: {}", e);

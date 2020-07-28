@@ -30,4 +30,4 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "./node-template --dev --ws-external & RUST_LOG=error ./iroha"
+    command: bash -c "RUST_LOG=info ./node-template --dev --ws-external & RUST_LOG=error ./iroha > /dev/null & sleep 10 && ./bridge-tester"

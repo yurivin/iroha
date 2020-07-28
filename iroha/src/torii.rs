@@ -87,7 +87,6 @@ impl Torii {
             .and(warp::path::param())
             .and(warp::body::bytes())
             .map(move |path: String, bytes: Bytes| {
-                println!("path: {}, rcvd: {:?}", path, bytes);
                 let request = Request::new(format!("/{}", path), bytes.to_vec());
                 let resp =
                     async_std::task::block_on(handle_request(Arc::clone(&state), request)).unwrap();
@@ -202,7 +201,6 @@ async fn handle_connections(
 
 #[log]
 async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Response, String> {
-    println!("handle req {}", request.url());
     match request.url() {
         uri::INSTRUCTIONS_URI => match RequestedTransaction::try_from(request.payload().to_vec()) {
             Ok(transaction) => {
@@ -216,7 +214,6 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                 // {
                 //     log::error!("Failed to send event - channel is full: {}", e);
                 // }
-                println!("rcvd tx: {:?}", transaction);
                 state
                     .write()
                     .await
@@ -225,7 +222,7 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                         &transaction,
                     ))))
                     .await;
-                let transaction = dbg!(transaction.accept())?;
+                let transaction = transaction.accept()?;
 
                 let payload = Vec::from(&transaction);
                 state
@@ -295,7 +292,6 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
         },
         uri::BLOCK_SYNC_URI => match BlockSyncMessage::try_from(request.payload().to_vec()) {
             Ok(message) => {
-                println!("block sync!");
                 // state
                 //     .write()
                 //     .await
