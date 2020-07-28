@@ -4,7 +4,6 @@ services:
   dev:
     build: iroha_substrate
     container_name: node-template
-#    image: paritytech/ci-linux:production
     working_dir: /var/www/iroha/iroha_substrate/substrate-node-template
     ports:
       - "9944:9944"
@@ -12,15 +11,13 @@ services:
       - CARGO_HOME=/var/www/iroha/.cargo
     volumes:
       - .:/var/www/iroha
-#      - ./iroha_substrate/substrate-node-template:/var/www/node-template
       - type: bind
         source: ./.local
         target: /root/.local
     command: bash -c "cargo build --package node-template && ../../target/debug/node-template --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
   dev-bin:
-    build: docker_container/iroha_substrate/bin
+    build: bridge_test
     container_name: node-template-bin
-#    working_dir: /var/www/iroha/iroha_substrate/bin
     ports:
       - "9944:9944"
       - "7878:7878"
