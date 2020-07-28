@@ -578,6 +578,7 @@ pub mod isi {
             get_liquidity_source(&liquidity_source_id, world_state_view)?.clone();
         let token_pair_id = &liquidity_source_id.token_pair_id;
 
+        // TODO: consider wrapping data into struct contained in enum
         if let LiquiditySourceData::XYKPool {
             pswap_asset_definition_id,
             storage_account_id,
@@ -589,6 +590,7 @@ pub mod isi {
         {
             let reserve_a = base_asset_amount;
             let reserve_b = target_asset_amount;
+            // calculate appropriate deposit quantities to preserve pool proportions
             let (amount_a, amount_b) = xyk_pool_get_optimal_deposit_amounts(
                 reserve_a.clone(),
                 reserve_b.clone(),
@@ -597,6 +599,7 @@ pub mod isi {
                 amount_a_min,
                 amount_b_min,
             )?;
+            // deposit tokens into the storage account
             transfer_from(
                 token_pair_id.base_asset.clone(),
                 authority.clone(),
@@ -613,6 +616,7 @@ pub mod isi {
                 authority.clone(),
                 world_state_view,
             )?;
+            // mint pswap for sender based on deposited amount
             let (reserve_a, reserve_b, k, total_supply) = mint_pswap_with_fee(
                 pswap_asset_definition_id.clone(),
                 to,
@@ -623,7 +627,6 @@ pub mod isi {
                 k_last,
                 None,
                 pswap_total_supply,
-                // authority,
                 world_state_view,
             )?;
             // update state of the pool
@@ -729,7 +732,6 @@ pub mod isi {
             k_last.clone(),
             fee_to.clone(),
             total_supply.clone(),
-            // authority.clone(),
             world_state_view,
         )?;
 
@@ -754,7 +756,6 @@ pub mod isi {
             to,
             liquidity,
             total_supply,
-            // authority,
             world_state_view,
         )?;
         let (reserve_a, reserve_b) = (amount_a, amount_b);
@@ -772,7 +773,6 @@ pub mod isi {
         k_last: u32,
         fee_to: Option<<Account as Identifiable>::Id>,
         mut total_supply: u32,
-        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(u32, u32), String> {
         if let Some(fee_to) = fee_to {
@@ -789,7 +789,6 @@ pub mod isi {
                             fee_to,
                             liquidity,
                             total_supply.clone(),
-                            // authority,
                             world_state_view,
                         )?;
                     }
@@ -807,7 +806,6 @@ pub mod isi {
         to: <Account as Identifiable>::Id,
         value: u32,
         total_supply: u32,
-        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<u32, String> {
         let asset_id = AssetId::new(asset_definition_id, to);
@@ -1098,15 +1096,35 @@ pub mod isi {
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register asset");
 
+            // create account with permissions to transfer
+            let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+            let account_id = AccountId::new("User", &domain_name);
+            let mut account = Account::with_signatory(
+                &account_id.name,
+                &account_id.domain_name,
+                key_pair.public_key.clone(),
+            );
+            let permission_asset_definition_id = permission_asset_definition_id();
+            let permission_asset_id = AssetId {
+                definition_id: permission_asset_definition_id.clone(),
+                account_id: account_id.clone(),
+            };
+            let permission_asset = Asset::with_permissions(
+                permission_asset_id.clone(),
+                &[
+                    Permission::TransferAsset(None, Some(asset_definition_a.id.clone())),
+                    Permission::TransferAsset(None, Some(asset_definition_b.id.clone())),
+                ],
+            );
+            account.assets.insert(permission_asset_id, permission_asset);
+            domain
+                .register_account(account)
+                .execute(testkit.root_account_id.clone(), world_state_view)
+                .expect("failed to create account");
+
             // mint tokens to account
-            let asset_a_id = AssetId::new(
-                asset_definition_a.id.clone(),
-                testkit.root_account_id.clone(),
-            );
-            let asset_b_id = AssetId::new(
-                asset_definition_b.id.clone(),
-                testkit.root_account_id.clone(),
-            );
+            let asset_a_id = AssetId::new(asset_definition_a.id.clone(), account_id.clone());
+            let asset_b_id = AssetId::new(asset_definition_b.id.clone(), account_id.clone());
             Mint::new(5000u32, asset_a_id.clone())
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("mint asset failed");
@@ -1114,7 +1132,7 @@ pub mod isi {
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("mint asset failed");
 
-            // register pair for registered assets
+            // register pair for exchange assets
             create_token_pair(
                 asset_definition_a.id.clone(),
                 asset_definition_b.id.clone(),
@@ -1134,9 +1152,9 @@ pub mod isi {
                 .execute(testkit.dex_owner_account_id.clone(), world_state_view)
                 .expect("create xyk pool failed");
 
+            // replicate generated id's for checking
             let xyk_pool_id =
                 LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
-
             let storage_account_id_test = AccountId::new(
                 &format!(
                     "{} XYK {}",
@@ -1145,7 +1163,6 @@ pub mod isi {
                 ),
                 &domain_name,
             );
-
             let pswap_asset_definition_id_test = AssetDefinitionId::new(
                 &format!("{} XYK {}", PSWAP_ASSET_NAME, &token_pair_id.get_symbol()),
                 &domain_name,
@@ -1153,9 +1170,10 @@ pub mod isi {
 
             // add minted tokens to the pool from account
             xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(testkit.root_account_id.clone(), world_state_view)
+                .execute(account_id.clone(), world_state_view)
                 .expect("add liquidity failed");
 
+            // check state of XYK Pool
             if let QueryResult::GetTokenPair(token_pair_result) =
                 GetTokenPair::build_request(token_pair_id.clone())
                     .query
@@ -1189,8 +1207,9 @@ pub mod isi {
                 panic!("wrong enum variant returned for GetTokenPair");
             }
 
+            // check depositing account to have decreased base/target tokens and minted liquidity tokens
             if let QueryResult::GetAccount(account_result) =
-                GetAccount::build_request(testkit.root_account_id.clone())
+                GetAccount::build_request(account_id.clone())
                     .query
                     .execute(world_state_view)
                     .expect("failed to query token pair")
@@ -1206,10 +1225,8 @@ pub mod isi {
                     .expect("failed to get target asset");
                 assert_eq!(base_asset.quantity.clone(), 0);
                 assert_eq!(target_asset.quantity.clone(), 0);
-                let pswap_asset_id = AssetId::new(
-                    pswap_asset_definition_id_test.clone(),
-                    testkit.root_account_id.clone(),
-                );
+                let pswap_asset_id =
+                    AssetId::new(pswap_asset_definition_id_test.clone(), account_id.clone());
                 let pswap_asset = account
                     .assets
                     .get(&pswap_asset_id)
@@ -1219,6 +1236,7 @@ pub mod isi {
                 panic!("wrong enum variant returned for GetAccount");
             }
 
+            // check storage account to have increased base/target tokens
             if let QueryResult::GetAccount(account_result) =
                 GetAccount::build_request(storage_account_id_test.clone())
                     .query
@@ -1249,7 +1267,6 @@ pub mod isi {
             }
         }
 
-        // TODO: need to sync actual transfer amounts with saved state in terms of precision - rounding
         // TODO: tests with multiple consecutive AddLiquidity
         // TODO: tests for AddLiquidity with fee
 
@@ -1315,6 +1332,50 @@ pub mod isi {
             } else {
                 panic!("wrong enum variant returned for GetAccount");
             }
+        }
+
+        #[test]
+        fn test_xyk_pool_optimal_liquidity_should_pass() {
+            // zero reserves return desired amounts
+            let (amount_a, amount_b) =
+                xyk_pool_get_optimal_deposit_amounts(0, 0, 10000, 5000, 10000, 5000)
+                    .expect("failed to get optimal asset amounts");
+            assert_eq!(amount_a, 10000);
+            assert_eq!(amount_b, 5000);
+            // add liquidity with same proportions
+            let (amount_a, amount_b) =
+                xyk_pool_get_optimal_deposit_amounts(10000, 5000, 10000, 5000, 10000, 5000)
+                    .expect("failed to get optimal asset amounts");
+            assert_eq!(amount_a, 10000);
+            assert_eq!(amount_b, 5000);
+            // add liquidity with different proportions
+            let (amount_a, amount_b) =
+                xyk_pool_get_optimal_deposit_amounts(10000, 5000, 5000, 10000, 0, 0)
+                    .expect("failed to get optimal asset amounts");
+            assert_eq!(amount_a, 5000);
+            assert_eq!(amount_b, 2500);
+            // add liquidity `b_optimal>b_desired` branch
+            let (amount_a, amount_b) =
+                xyk_pool_get_optimal_deposit_amounts(10000, 5000, 5000, 2000, 0, 0)
+                    .expect("failed to get optimal asset amounts");
+            assert_eq!(amount_a, 4000);
+            assert_eq!(amount_b, 2000);
+        }
+
+        #[test]
+        fn test_xyk_pool_quote_should_pass() {
+            let amount_b_optimal =
+                xyk_pool_quote(2000, 5000, 10000).expect("failed to calculate proportion");
+            assert_eq!(amount_b_optimal, 4000);
+            let amount_b_optimal =
+                xyk_pool_quote(1, 5000, 10000).expect("failed to calculate proportion");
+            assert_eq!(amount_b_optimal, 2);
+            let result = xyk_pool_quote(0, 5000, 10000).unwrap_err();
+            assert_eq!(result, "insufficient amount");
+            let result = xyk_pool_quote(1000, 5000, 0).unwrap_err();
+            assert_eq!(result, "insufficient liquidity");
+            let result = xyk_pool_quote(1000, 0, 10000).unwrap_err();
+            assert_eq!(result, "insufficient liquidity");
         }
     }
 }
