@@ -4,6 +4,7 @@ WORKDIR /builds
 
 COPY iroha ./iroha
 COPY node-template ./node-template
+COPY config.json ./config.json
 
 RUN set -eux; \
 	apt -y update; \
