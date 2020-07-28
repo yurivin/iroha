@@ -22,20 +22,22 @@ fn check_response_assets(
     expected_dot_amount: u32,
     expected_xor_amount: u32,
 ) {
-    if let QueryResult::GetAccountAssets(get_account_assets_result) = response {
-        let assets = &get_account_assets_result.assets;
+    if let QueryResult::GetAccount(get_account_result) = response {
+        let account = &get_account_result.account;
+        let assets = &account.assets;
         let dot_amount = assets
             .iter()
-            .find(|asset| asset.id.definition_id.name == "DOT")
+            .find(|(_, asset)| asset.id.definition_id.name == "DOT")
             .map(|asset| asset.quantity)
             .unwrap_or(0);
         let xor_amount = assets
             .iter()
-            .find(|asset| asset.id.definition_id.name == "XOR")
+            .find(|(_, asset)| asset.id.definition_id.name == "XOR")
             .map(|asset| asset.quantity)
             .unwrap_or(0);
         assert_eq!(dot_amount, expected_dot_amount);
         assert_eq!(xor_amount, expected_xor_amount);
+        println!("{} account balance is: DOT: {}, XOR: {}", account.id, expected_dot_amount, expected_xor_amount);
     } else {
         panic!("Test failed.");
     }
@@ -47,6 +49,7 @@ async fn main() {
         Configuration::from_path("config.json").expect("Failed to load configuration.");
     let mut iroha_client = Client::new(&configuration);
 
+    println!("Checking account balances before the swap...");
     // check assets before the swap, but after the user sent transaction to the bridge
     let bridge_account_id = AccountId::new("bridge", "polkadot");
     let get_bridge_account = by_account_id(bridge_account_id);
@@ -72,15 +75,16 @@ async fn main() {
     let xt: UncheckedExtrinsicV4<_> =
         compose_extrinsic!(api.clone(), "TemplateModule", "fetch_blocks_signed");
 
-    println!("Sending transaction");
-
+    println!("Sending transaction to substrate...");
     let tx_hash = api
         .send_extrinsic(xt.hex_encode(), XtStatus::InBlock)
         .unwrap();
     println!("Transaction got finalized. Hash: {:?}\n", tx_hash);
 
+    println!("Waiting for all Iroha transactions to confirm...");
     async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
+    println!("Checking account balances after the swap...");
     // check assets after the swap
     let response = iroha_client
         .request(&get_bridge_account)
