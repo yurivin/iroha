@@ -77,7 +77,7 @@ impl pallet_balances::Trait for Test {
 }
 
 impl Trait for Test {
-    type DOT = Balances;
+    type XOR = Balances;
     type Event = TestEvent;
 }
 

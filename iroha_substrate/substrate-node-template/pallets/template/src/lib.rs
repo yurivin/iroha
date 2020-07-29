@@ -22,33 +22,30 @@ use frame_system::{
 };
 use sp_core::crypto::KeyTypeId;
 use sp_core::ed25519::Signature as SpSignature;
-use sp_runtime::{
-    offchain as rt_offchain,
-    offchain::storage::StorageValueRef,
-    transaction_validity::{
-        InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
-        ValidTransaction,
-    },
-};
+use sp_runtime::{offchain as rt_offchain, offchain::storage::StorageValueRef, transaction_validity::{
+    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+    ValidTransaction,
+}, MultiSignature};
 use sp_std::prelude::*;
 use sp_std::str;
-// We use `alt_serde`, and Xanewok-modified `serde_json` so that we can compile the program
-//   with serde(features `std`) and alt_serde(features `no_std`).
 use alt_serde::{Deserialize, Deserializer};
 use frame_system::offchain::{Account, SignMessage, SigningTypes};
 use iroha_client_no_std::account;
-use iroha_client_no_std::block::{Message as BlockMessage, ValidBlock};
-use iroha_client_no_std::crypto::{PublicKey, Signature};
-use iroha_client_no_std::isi::prelude::PeerInstruction;
-use iroha_client_no_std::peer::PeerId;
-use iroha_client_no_std::prelude::*;
-use iroha_client_no_std::tx::RequestedTransaction;
-use sp_runtime::offchain::http::Request;
-use sp_runtime::traits::Hash;
-use sp_std::convert::TryFrom;
 use iroha_client_no_std::account::isi::AccountInstruction;
 use iroha_client_no_std::asset::isi::AssetInstruction;
 use iroha_client_no_std::asset::query::GetAccountAssets;
+use iroha_client_no_std::block::{BlockHeader, Message as BlockMessage, ValidBlock};
+use iroha_client_no_std::crypto::{PublicKey, Signature, Signatures};
+use iroha_client_no_std::isi::prelude::PeerInstruction;
+use iroha_client_no_std::peer::PeerId;
+use iroha_client_no_std::prelude::*;
+use iroha_client_no_std::tx::{Payload, RequestedTransaction};
+use sp_runtime::offchain::http::Request;
+use sp_runtime::traits::{Hash, StaticLookup};
+use sp_std::convert::TryFrom;
+use frame_support::traits::ExistenceRequirement;
+use frame_support::traits::Currency;
+// use core::alloc::format;
 
 /// Defines application identifier for crypto keys of this module.
 ///
@@ -71,34 +68,35 @@ pub const HTTP_HEADER_USER_AGENT: &[u8] = b"jimmychu0807";
 pub mod crypto {
     use crate::KEY_TYPE;
     use sp_core::ed25519::Signature as Ed25519Signature;
+    use sp_core::sr25519::Signature as Sr25519Signature;
     use sp_runtime::{
-        app_crypto::{app_crypto, ed25519},
+        app_crypto::{app_crypto, sr25519},
         traits::Verify,
         MultiSignature, MultiSigner,
     };
 
-    app_crypto!(ed25519, KEY_TYPE);
+    app_crypto!(sr25519, KEY_TYPE);
 
     pub struct TestAuthId;
     // implemented for ocw-runtime
     impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
         type RuntimeAppPublic = Public;
-        type GenericSignature = sp_core::ed25519::Signature;
-        type GenericPublic = sp_core::ed25519::Public;
+        type GenericSignature = sp_core::sr25519::Signature;
+        type GenericPublic = sp_core::sr25519::Public;
     }
 
     // implemented for mock runtime in test
-    impl frame_system::offchain::AppCrypto<<Ed25519Signature as Verify>::Signer, Ed25519Signature>
+    impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
         for TestAuthId
     {
         type RuntimeAppPublic = Public;
-        type GenericSignature = sp_core::ed25519::Signature;
-        type GenericPublic = sp_core::ed25519::Public;
+        type GenericSignature = sp_core::sr25519::Signature;
+        type GenericPublic = sp_core::sr25519::Public;
     }
 }
 
 /// This is the pallet's configuration trait
-pub trait Trait: system::Trait + CreateSignedTransaction<Call<Self>> {
+pub trait Trait: system::Trait + collateral::Trait + CreateSignedTransaction<Call<Self>> {
     /// The identifier type for an offchain worker.
     type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
     /// The overarching dispatch call type.
@@ -145,8 +143,15 @@ decl_error! {
         HttpFetchingError,
         // Error returned when gh-info has already been fetched
         AlreadyFetched,
+        ReserveCollateralError,
     }
 }
+
+use frame_system::RawOrigin;
+use sp_runtime::DispatchError;
+
+use sp_core::{ed25519, sr25519, crypto::AccountId32};
+use sp_runtime::traits::{IdentifyAccount, Verify};
 
 decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
@@ -154,75 +159,80 @@ decl_module! {
 
         #[weight = 0]
         pub fn fetch_blocks_signed(origin) -> DispatchResult {
-            debug::info!("fetch_blocks");
+            debug::info!("called fetch_blocks");
             let who = ensure_signed(origin)?;
             Ok(())
         }
 
         #[weight = 0]
         pub fn submit_number_signed(origin, number: u64) -> DispatchResult {
-            debug::info!("submit_number_signed: {:?}", number);
+            debug::info!("called submit_number_signed: {:?}", number);
             let who = ensure_signed(origin)?;
             Self::append_or_replace_number(Some(who), number)
         }
 
         #[weight = 0]
         pub fn submit_number_unsigned(origin, number: u64) -> DispatchResult {
-            debug::info!("submit_number_unsigned: {:?}", number);
+            debug::info!("called submit_number_unsigned: {:?}", number);
             let _ = ensure_none(origin)?;
             Self::append_or_replace_number(None, number)
         }
 
+        #[weight = 0]
+        pub fn transfer(origin, receiver: T::AccountId, amount: collateral::BalanceOf::<T>) -> DispatchResult {
+            debug::info!("called transfer");
+            // let _ = ensure_signed(origin)?;
+            let sender = <<T as frame_system::Trait>::AccountId>::decode(&mut &([212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125])[..]).unwrap();
+            debug::info!("sender {:?}", sender);
+
+            if let Err(e) = T::XOR::transfer(&sender, &receiver, amount, ExistenceRequirement::AllowDeath) {
+                debug::error!("transfer: {:?}", e);
+            } else {
+                debug::info!("transfer success");
+            }
+            // let minted_tokens = T::XOR::issue(amount);
+            // T::XOR::resolve_creating(&requester, minted_tokens);
+            // Self::deposit_event(RawEvent::Mint(requester, amount));
+            // Self::deposit_event(RawEvent::Transfer(sender, receiver, amount));
+            Ok(())
+        }
+
         fn offchain_worker(block_number: T::BlockNumber) {
-            debug::info!("Entering off-chain workers");
-            match Self::fetch_blocks() {
-                Ok(blocks) => {
-                    for block in blocks {
-                        Self::handle_block(block);
+            if block_number < T::BlockNumber::from(1) {
+                debug::info!("Entering off-chain workers");
+                match Self::fetch_blocks() {
+                    Ok(blocks) => {
+                        for block in blocks {
+                            Self::handle_block(block);
+                        }
                     }
+                    Err(e) => { debug::error!("Error: {:?}", e); }
                 }
-                Err(e) => { debug::error!("Error: {:?}", e); }
             }
         }
-
-/*
-        /// Transfer an amount of PolkaBTC (without fees)
-        ///
-        /// # Arguments
-        ///
-        /// * `origin` - sender of the transaction
-        /// * `receiver` - receiver of the transaction
-        /// * `amount` - amount of PolkaBTC
-        #[weight = 1000]
-        fn transfer(origin, receiver: T::AccountId, amount: BalanceOf<T>)
-            -> DispatchResult
-        {
-            let sender = ensure_signed(origin)?;
-
-            T::PolkaBTC::transfer(&sender, &receiver, amount, KeepAlive)
-                .map_err(|_| Error::InsufficientFunds)?;
-
-            // Self::deposit_event(RawEvent::Transfer(sender, receiver, amount));
-
-            Ok(())
-        }
-
-        #[weight = 1000]
-        fn issue(origin, receiver: T::AccountId, amount: BalanceOf<T>)
-            -> DispatchResult
-        {
-            let sender = ensure_signed(origin)?;
-
-            // adds the amount to the total balance of tokens
-            let minted_tokens = T::PolkaBTC::issue(amount);
-            // adds the added amount to the requester's balance
-            T::PolkaBTC::resolve_creating(&requester, minted_tokens);
-
-            // Self::deposit_event(RawEvent::Mint(requester, amount));
-            Ok(())
-        }
- */
     }
+}
+
+macro_rules! my_dbg {
+    () => {
+        debug::info!("[{}]", $crate::line!());
+    };
+    ($val:expr) => {
+        // Use of `match` here is intentional because it affects the lifetimes
+        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        match $val {
+            tmp => {
+                debug::info!("[{}] {} = {:#?}",
+                    $crate::line!(), $crate::stringify!($val), &tmp);
+                tmp
+            }
+        }
+    };
+    // Trailing comma with single argument is ignored
+    ($val:expr,) => { debug::info!($val) };
+    ($($val:expr),+ $(,)?) => {
+        ($(debug::info!($val)),+,)
+    };
 }
 
 fn parity_sig_to_iroha_sig<T: Trait>(
@@ -279,100 +289,70 @@ impl<T: Trait> Module<T> {
     }
 
     /*
-    fn choose_tx_type(block_number: T::BlockNumber) -> TransactionType {
-        // Decide what type of transaction to send based on block number.
-        // Each block the offchain worker will send one type of transaction back to the chain.
-        // First a signed transaction, then an unsigned transaction, then an http fetch and json parsing.
-        match block_number.try_into().ok().unwrap() % 3 {
-            0 => TransactionType::SignedSubmitNumber,
-            1 => TransactionType::UnsignedSubmitNumber,
-            2 => TransactionType::HttpFetching,
-            _ => TransactionType::None,
+    /// Check if we have fetched github info before. if yes, we use the cached version that is
+    ///   stored in off-chain worker storage `storage`. if no, we fetch the remote info and then
+    ///   write the info into the storage for future retrieval.
+    fn fetch_if_needed() -> Result<(), Error<T>> {
+        // Start off by creating a reference to Local Storage value.
+        // Since the local storage is common for all offchain workers, it's a good practice
+        // to prepend our entry with the pallet name.
+        let s_info = StorageValueRef::persistent(b"offchain-demo::gh-info");
+        let s_lock = StorageValueRef::persistent(b"offchain-demo::lock");
+
+        // The local storage is persisted and shared between runs of the offchain workers,
+        // and offchain workers may run concurrently. We can use the `mutate` function, to
+        // write a storage entry in an atomic fashion.
+        //
+        // It has a similar API as `StorageValue` that offer `get`, `set`, `mutate`.
+        // If we are using a get-check-set access pattern, we likely want to use `mutate` to access
+        // the storage in one go.
+        //
+        // Ref: https://substrate.dev/rustdocs/v2.0.0-rc3/sp_runtime/offchain/storage/struct.StorageValueRef.html
+        if let Some(Some(gh_info)) = s_info.get::<GithubInfo>() {
+            // gh-info has already been fetched. Return early.
+            debug::info!("cached gh-info: {:?}", gh_info);
+            return Ok(());
         }
-    }
-    */
 
-    // /// Check if we have fetched github info before. if yes, we use the cached version that is
-    // ///   stored in off-chain worker storage `storage`. if no, we fetch the remote info and then
-    // ///   write the info into the storage for future retrieval.
-    // fn fetch_if_needed() -> Result<(), Error<T>> {
-    //     // Start off by creating a reference to Local Storage value.
-    //     // Since the local storage is common for all offchain workers, it's a good practice
-    //     // to prepend our entry with the pallet name.
-    //     let s_info = StorageValueRef::persistent(b"offchain-demo::gh-info");
-    //     let s_lock = StorageValueRef::persistent(b"offchain-demo::lock");
-    //
-    //     // The local storage is persisted and shared between runs of the offchain workers,
-    //     // and offchain workers may run concurrently. We can use the `mutate` function, to
-    //     // write a storage entry in an atomic fashion.
-    //     //
-    //     // It has a similar API as `StorageValue` that offer `get`, `set`, `mutate`.
-    //     // If we are using a get-check-set access pattern, we likely want to use `mutate` to access
-    //     // the storage in one go.
-    //     //
-    //     // Ref: https://substrate.dev/rustdocs/v2.0.0-rc3/sp_runtime/offchain/storage/struct.StorageValueRef.html
-    //     if let Some(Some(gh_info)) = s_info.get::<GithubInfo>() {
-    //         // gh-info has already been fetched. Return early.
-    //         debug::info!("cached gh-info: {:?}", gh_info);
-    //         return Ok(());
-    //     }
-    //
-    //     // We are implementing a mutex lock here with `s_lock`
-    //     let res: Result<Result<bool, bool>, Error<T>> = s_lock.mutate(|s: Option<Option<bool>>| {
-    //         match s {
-    //             // `s` can be one of the following:
-    //             //   `None`: the lock has never been set. Treated as the lock is free
-    //             //   `Some(None)`: unexpected case, treated it as AlreadyFetch
-    //             //   `Some(Some(false))`: the lock is free
-    //             //   `Some(Some(true))`: the lock is held
-    //
-    //             // If the lock has never been set or is free (false), return true to execute `fetch_n_parse`
-    //             None | Some(Some(false)) => Ok(true),
-    //
-    //             // Otherwise, someone already hold the lock (true), we want to skip `fetch_n_parse`.
-    //             // Covering cases: `Some(None)` and `Some(Some(true))`
-    //             _ => Err(<Error<T>>::AlreadyFetched),
-    //         }
-    //     });
-    //     // Cases of `res` returned result:
-    //     //   `Err(<Error<T>>)` - lock is held, so we want to skip `fetch_n_parse` function.
-    //     //   `Ok(Err(true))` - Another ocw is writing to the storage while we set it,
-    //     //                     we also skip `fetch_n_parse` in this case.
-    //     //   `Ok(Ok(true))` - successfully acquire the lock, so we run `fetch_n_parse`
-    //     if let Ok(Ok(true)) = res {
-    //         match Self::fetch_n_parse() {
-    //             Ok(gh_info) => {
-    //                 // set gh-info into the storage and release the lock
-    //                 s_info.set(&gh_info);
-    //                 s_lock.set(&false);
-    //
-    //                 debug::info!("fetched gh-info: {:?}", gh_info);
-    //             }
-    //             Err(err) => {
-    //                 // release the lock
-    //                 s_lock.set(&false);
-    //                 return Err(err);
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
-    /*
-    /// Fetch from remote and deserialize the JSON to a struct
-    fn fetch_n_parse() -> Result<GithubInfo, Error<T>> {
-        let resp_bytes = Self::fetch_from_remote().map_err(|e| {
-            debug::error!("fetch_from_remote error: {:?}", e);
-            <Error<T>>::HttpFetchingError
-        })?;
+        // We are implementing a mutex lock here with `s_lock`
+        let res: Result<Result<bool, bool>, Error<T>> = s_lock.mutate(|s: Option<Option<bool>>| {
+            match s {
+                // `s` can be one of the following:
+                //   `None`: the lock has never been set. Treated as the lock is free
+                //   `Some(None)`: unexpected case, treated it as AlreadyFetch
+                //   `Some(Some(false))`: the lock is free
+                //   `Some(Some(true))`: the lock is held
 
-        let resp_str = str::from_utf8(&resp_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
-        // Print out our fetched JSON string
-        debug::info!("{}", resp_str);
+                // If the lock has never been set or is free (false), return true to execute `fetch_n_parse`
+                None | Some(Some(false)) => Ok(true),
 
-        // Deserializing JSON to struct, thanks to `serde` and `serde_derive`
-        let gh_info: GithubInfo =
-            serde_json::from_str(&resp_str).map_err(|_| <Error<T>>::HttpFetchingError)?;
-        Ok(gh_info)
+                // Otherwise, someone already hold the lock (true), we want to skip `fetch_n_parse`.
+                // Covering cases: `Some(None)` and `Some(Some(true))`
+                _ => Err(<Error<T>>::AlreadyFetched),
+            }
+        });
+        // Cases of `res` returned result:
+        //   `Err(<Error<T>>)` - lock is held, so we want to skip `fetch_n_parse` function.
+        //   `Ok(Err(true))` - Another ocw is writing to the storage while we set it,
+        //                     we also skip `fetch_n_parse` in this case.
+        //   `Ok(Ok(true))` - successfully acquire the lock, so we run `fetch_n_parse`
+        if let Ok(Ok(true)) = res {
+            match Self::fetch_n_parse() {
+                Ok(gh_info) => {
+                    // set gh-info into the storage and release the lock
+                    s_info.set(&gh_info);
+                    s_lock.set(&false);
+
+                    debug::info!("fetched gh-info: {:?}", gh_info);
+                }
+                Err(err) => {
+                    // release the lock
+                    s_lock.set(&false);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(())
     }
     */
 
@@ -381,38 +361,66 @@ impl<T: Trait> Module<T> {
             let author_id = tx.payload.account_id;
             let bridge_account_id = AccountId::new("bridge", "polkadot");
             let root_account_id = AccountId::new("root", "global");
-            let xor_asset_id = AssetId::new(AssetDefinitionId::new("XOR", "global"), root_account_id);
+            let xor_asset_def = AssetDefinitionId::new("XOR", "global");
+            let xor_asset_id =
+                AssetId::new(xor_asset_def.clone(), root_account_id.clone());
             let dot_asset_def = AssetDefinitionId::new("DOT", "polkadot");
-            let dot_asset_id = AssetId::new(dot_asset_def, bridge_account_id.clone());
+            let dot_asset_id = AssetId::new(dot_asset_def.clone(), bridge_account_id.clone());
             for isi in tx.payload.instructions {
-                debug::info!("ISI: {:?}", isi);
                 match isi {
-                    Instruction::Account(AccountInstruction::TransferAsset(from, to, mut asset)) => {
-                        debug::info!("outgoing transfer from {:?}: {:?}", from, asset);
-                        debug::info!("to ID: {:?}", to);
+                    Instruction::Account(AccountInstruction::TransferAsset(
+                        from,
+                        to,
+                        mut asset,
+                    )) => {
+                        debug::info!("Outgoing {} transfer from {}", asset.id.definition_id.name, from);
                         if to == bridge_account_id {
-                            if asset.id != xor_asset_id {
+                            if asset.id.definition_id != xor_asset_def {
                                 continue;
                             }
-                            let (from, to) = (to, from);
-                            let exchange_rate = 2;
-                            let amount = asset.quantity * exchange_rate;
-                            let exchanged_asset = Asset::with_quantity(dot_asset_id.clone(), amount);
-                            // asset.id.definition_id.name = "213".into();
-                            let instructions = vec![
-                                Instruction::Asset(AssetInstruction::MintAsset(amount, dot_asset_id.clone())),
-                                Instruction::Account(AccountInstruction::TransferAsset(from, to.clone(), exchanged_asset)),
-                            ];
-                            let resp = Self::send_instructions(instructions)?;
-                            if !resp.is_empty() {
-                                debug::error!("error while processing transaction");
+                            use sp_core::crypto::AccountId32;
+                            // TODO: create mapping or do a query for the user public key
+                            if from == root_account_id {
+                                let amount = collateral::BalanceOf::<T>::from(asset.quantity * 1000);
+
+                                let signer = Signer::<T, T::AuthorityId>::any_account();
+                                if !signer.can_sign() {
+                                    debug::error!("No local account available");
+                                    return Err(<Error<T>>::SignedSubmitNumberError);
+                                }
+
+                                let result = signer.send_signed_transaction(move |acc| {
+                                    let receiver = <<T as frame_system::Trait>::AccountId>::decode(&mut &([52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120])[..]).unwrap();
+                                    debug::info!("signer {:?}", acc.id);
+                                    debug::info!("receiver {:?}", receiver);
+
+                                    let sender = <<T as frame_system::Trait>::AccountId>::decode(&mut &([212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125])[..]).unwrap();
+                                    debug::info!("sender {:?}", sender);
+
+                                    Call::transfer(receiver, amount)
+                                });
+
+
+                                match result {
+                                    Some((acc, Ok(_))) => {
+                                        debug::native::info!(
+                                            "off-chain send_signed: acc: {:?}",
+                                            acc.id
+                                        );
+                                    }
+                                    Some((acc, Err(e))) => {
+                                        debug::error!("[{:?}] Failed in signed_submit_number: {:?}", acc.id, e);
+                                        return Err(<Error<T>>::SignedSubmitNumberError);
+                                    }
+                                    _ => {
+                                        debug::error!("Failed in signed_submit_number");
+                                        return Err(<Error<T>>::SignedSubmitNumberError);
+                                    }
+                                };
                             }
-                            let assets_query = GetAccountAssets::build_request(to);
-                            let query_result = QueryResult::decode(&mut Self::send_query(assets_query)?.as_slice()).map_err(|_| <Error<T>>::HttpFetchingError)?;
-                            debug::error!("query result: {:?}", query_result);
                         }
                     }
-                    _ => ()
+                    _ => (),
                 }
             }
         }
@@ -422,13 +430,12 @@ impl<T: Trait> Module<T> {
     fn fetch_blocks() -> Result<Vec<ValidBlock>, Error<T>> {
         let remote_url_bytes = BLOCK_ENDPOINT.to_vec();
         let user_agent = HTTP_HEADER_USER_AGENT.to_vec();
-        let remote_url =
-            str::from_utf8(&remote_url_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
+        let remote_url = str::from_utf8(&remote_url_bytes)
+            .map_err(|_| <Error<T>>::HttpFetchingError)?;
         let latest_hash = [0; 32];
         let null_pk = PublicKey::try_from(vec![0u8; 32]).unwrap();
-        // let mut get_blocks = BlockMessage::B(latest_hash, PeerId::new("", &null_pk));
         let mut get_blocks = BlockMessage::GetBlocksAfter(latest_hash, PeerId::new("", &null_pk));
-        debug::info!("sending request to: {}", remote_url);
+        debug::info!("Sending request to: {}", remote_url);
         let request = rt_offchain::http::Request::post(remote_url, vec![get_blocks.encode()]);
         let timeout = sp_io::offchain::timestamp().add(rt_offchain::Duration::from_millis(3000));
         let pending = request
@@ -438,28 +445,42 @@ impl<T: Trait> Module<T> {
             )
             .deadline(timeout)
             .send()
-            .map_err(|_| <Error<T>>::HttpFetchingError)?;
+            .map_err(|e| {
+                debug::error!("Failed to send a request {:?}", e);
+                <Error<T>>::HttpFetchingError
+            })?;
         let response = pending
             .try_wait(timeout)
-            .map_err(|_| <Error<T>>::HttpFetchingError)?
-            .map_err(|_| <Error<T>>::HttpFetchingError)?;
+            .map_err(|e| {
+                debug::error!("Failed to get a response: {:?}", e);
+                <Error<T>>::HttpFetchingError
+            })?
+            .map_err(|e| {
+                debug::error!("Failed to get a response: {:?}", e);
+                <Error<T>>::HttpFetchingError
+            })?;
         if response.code != 200 {
             debug::error!("Unexpected http request status code: {}", response.code);
             return Err(<Error<T>>::HttpFetchingError);
         }
         let resp = response.body().collect::<Vec<u8>>();
-        let msg = BlockMessage::decode(&mut resp.as_slice())
-            .map_err(|_| <Error<T>>::HttpFetchingError)?;
+        let msg = BlockMessage::decode(&mut resp.as_slice()).map_err(|e| {
+            debug::error!("Failed to decode BlockMessage: {:?}", e);
+            <Error<T>>::HttpFetchingError
+        })?;
+
         let blocks = match msg {
             BlockMessage::LatestBlock(_, _) => {
+                debug::error!("Received wrong message: BlockMessage::LatestBlock");
                 return Err(<Error<T>>::HttpFetchingError);
             }
             BlockMessage::GetBlocksAfter(_, _) => {
+                debug::error!("Received wrong message: BlockMessage::GetBlocksAfter");
                 return Err(<Error<T>>::HttpFetchingError);
             }
             BlockMessage::ShareBlocks(blocks, _) => blocks,
         };
-        debug::info!("sending request to: {}", remote_url);
+        debug::info!("Sending request to: {}", remote_url);
         for block in blocks.clone() {
             for (pk, sig) in block
                 .signatures
@@ -468,12 +489,13 @@ impl<T: Trait> Module<T> {
                 .cloned()
                 .map(iroha_sig_to_parity_sig::<T>)
             {
+                let block_hash = T::Hashing::hash(&block.header.encode());
                 if !T::AuthorityId::verify(
-                    T::Hashing::hash(&block.header.encode()).as_ref(),
+                    block_hash.as_ref(),
                     pk,
                     sig,
                 ) {
-                    debug::error!("Invalid block signature");
+                    debug::error!("Invalid signature of block: {:?}", block_hash);
                     return Err(<Error<T>>::HttpFetchingError);
                 }
             }
@@ -488,42 +510,29 @@ impl<T: Trait> Module<T> {
             debug::error!("No local account available");
             return Err(<Error<T>>::SignedSubmitNumberError);
         }
-
         let remote_url_bytes = INSTRUCTION_ENDPOINT.to_vec();
         let user_agent = HTTP_HEADER_USER_AGENT.to_vec();
         let remote_url =
             str::from_utf8(&remote_url_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
-        // let pk = [
-        //     101u8, 170, 80, 164, 103, 38, 73, 61, 223, 133, 83, 139, 247, 77, 176, 84, 117, 15, 22,
-        //     28, 155, 125, 80, 226, 40, 26, 61, 248, 40, 159, 58, 53,
-        // ];
-        //
-        // let pk = PublicKey::try_from((&pk[..]).to_vec()).unwrap();
-        let mut requested_tx =
-            RequestedTransaction::new(instructions, account::Id::new("root", "global"), 10000, sp_io::offchain::timestamp().unix_millis());
-
+        let mut requested_tx = RequestedTransaction::new(
+            instructions,
+            account::Id::new("root", "global"),
+            10000,
+            sp_io::offchain::timestamp().unix_millis(),
+        );
         let payload_encoded = requested_tx.payload.encode();
         let sigs = signer.sign_message(&payload_encoded);
         for (acc, sig) in sigs {
             let sig = parity_sig_to_iroha_sig::<T>((acc.public, sig));
             requested_tx.signatures.push(sig);
         }
-
-        debug::info!("sending request to: {}", remote_url);
-
         let tx_encoded = requested_tx.encode();
-        debug::info!("tx bytes: {:?}", tx_encoded);
         let request = rt_offchain::http::Request::post(remote_url, vec![tx_encoded]);
-
         let timeout = sp_io::offchain::timestamp().add(rt_offchain::Duration::from_millis(10000));
-
         let pending = request
             .add_header(
                 "User-Agent",
-                str::from_utf8(&user_agent).map_err(|e| {
-                    debug::error!("e4: {:?}", e);
-                    <Error<T>>::HttpFetchingError
-                })?,
+                str::from_utf8(&user_agent).map_err(|e| <Error<T>>::HttpFetchingError)?,
             )
             .deadline(timeout)
             .send()
@@ -531,7 +540,6 @@ impl<T: Trait> Module<T> {
                 debug::error!("e1: {:?}", e);
                 <Error<T>>::HttpFetchingError
             })?;
-
         let response = pending
             .try_wait(timeout)
             .map_err(|e| {
@@ -561,20 +569,17 @@ impl<T: Trait> Module<T> {
         let remote_url_bytes = QUERY_ENDPOINT.to_vec();
         let remote_url =
             str::from_utf8(&remote_url_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
-        debug::info!("sending query to: {}", remote_url);
+        debug::info!("Sending query to: {}", remote_url);
 
         let query_encoded = query.encode();
         let request = rt_offchain::http::Request::post(remote_url, vec![query_encoded]);
 
         let timeout = sp_io::offchain::timestamp().add(rt_offchain::Duration::from_millis(10000));
 
-        let pending = request
-            .deadline(timeout)
-            .send()
-            .map_err(|e| {
-                debug::error!("e1: {:?}", e);
-                <Error<T>>::HttpFetchingError
-            })?;
+        let pending = request.deadline(timeout).send().map_err(|e| {
+            debug::error!("e1: {:?}", e);
+            <Error<T>>::HttpFetchingError
+        })?;
 
         let response = pending
             .try_wait(timeout)

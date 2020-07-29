@@ -4402,6 +4402,7 @@ dependencies = [
  "iroha_client",
  "iroha_client_no_std",
  "log 0.4.8",
+ "pallet-balances 2.0.0-rc4 (git+https://github.com/paritytech/substrate.git?tag=v2.0.0-rc4)",
  "parity-scale-codec",
  "parking_lot 0.10.2",
  "serde_json 1.0.44",

@@ -242,7 +242,7 @@ impl template::Trait for Runtime {
     type UnsignedPriority = UnsignedPriority;
 }
 
-/// DOT
+/// XOR
 impl pallet_balances::Trait<pallet_balances::Instance1> for Runtime {
     /// The type for recording an account's balance.
     type Balance = Balance;
@@ -261,7 +261,7 @@ impl pallet_balances::Trait<pallet_balances::Instance1> for Runtime {
 
 impl collateral::Trait for Runtime {
     type Event = Event;
-    type DOT = pallet_balances::Module<Runtime, pallet_balances::Instance1>;
+    type XOR = pallet_balances::Module<Runtime, pallet_balances::Instance1>;
 }
 
 impl<T: SigningTypes> frame_system::offchain::SignMessage<T> for Runtime {
@@ -350,7 +350,7 @@ construct_runtime!(
         Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Module, Storage},
         // The Recipe Pallets
-        DOT: pallet_balances::<Instance1>::{Module, Call, Storage, Config<T>, Event<T>},
+        XOR: pallet_balances::<Instance1>::{Module, Call, Storage, Config<T>, Event<T>},
         Collateral: collateral::{Module, Call, Storage, Event<T>},
         TemplateModule: template::{Module, Call, Storage, Event<T>, ValidateUnsigned},
     }
