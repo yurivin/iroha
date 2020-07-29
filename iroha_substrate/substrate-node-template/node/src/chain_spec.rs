@@ -2,7 +2,7 @@ use node_template_runtime::{
     genesis::{account_id_from_seed, dev_genesis, testnet_genesis},
     GenesisConfig,
 };
-use sp_core::sr25519;
+use sp_core::{sr25519, crypto::AccountId32};
 
 // Note this is the URL for the telemetry server
 //const STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
@@ -36,6 +36,7 @@ pub fn local_testnet_config() -> ChainSpec {
                 account_id_from_seed::<sr25519::Pair>("Alice"),
                 vec![
                     account_id_from_seed::<sr25519::Pair>("Alice"),
+                    // AccountId32::from([52u8, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120]),
                     account_id_from_seed::<sr25519::Pair>("Bob"),
                     account_id_from_seed::<sr25519::Pair>("Charlie"),
                     account_id_from_seed::<sr25519::Pair>("Dave"),

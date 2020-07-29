@@ -1,0 +1,30 @@
+{
+  "TORII_CONFIGURATION": {
+    "TORII_URL": "127.0.0.1:1337",
+    "TORII_CONNECT_URL": "127.0.0.1:8888"
+  },
+  "SUMERAGI_CONFIGURATION": {
+    "BLOCK_TIME_MS": 1000,
+    "COMMIT_TIME_MS": 1000,
+    "TX_RECEIPT_TIME_MS": 10000,
+    "MAX_FAULTY_PEERS": 0,
+    "TRUSTED_PEERS": [
+      {
+        "address": "127.0.0.1:1337",
+        "public_key": { "inner": [ 52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120 ] }
+      }
+    ]
+  },
+  "KURA_CONFIGURATION": {
+    "KURA_INIT_MODE": "strict",
+    "KURA_BLOCK_STORE_PATH": "./blocks"
+  },
+  "BLOCK_SYNC_CONFIGURATION": {
+    "GOSSIP_PERIOD_MS": 10000,
+    "BATCH_SIZE": 1
+  },
+  "LOGGER_CONFIGURATION": {},
+  "QUEUE_CONFIGURATION" : {},
+  "PUBLIC_KEY": {"inner": [52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120]},
+  "PRIVATE_KEY": {"inner": [18, 182, 246, 209, 68, 27, 219, 111, 25, 143, 14, 178, 64, 212, 107, 38, 113, 40, 79, 226, 81, 217, 198, 102, 12, 68, 238, 115, 162, 63, 242, 255, 52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120]}
+}

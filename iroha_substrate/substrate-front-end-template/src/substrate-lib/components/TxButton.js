@@ -117,11 +117,18 @@ function TxButton ({
     setUnsub(() => unsub);
   };
 
-  const queryResHandler = result =>
+  const queryResHandler = result => {
+    console.log('res', result);
     result.isNone ? setStatus('None') : setStatus(result.toString());
+  }
 
   const query = async () => {
+    console.log('paramFields', paramFields);
+    console.log('inputParams', inputParams);
     const transformed = transformParams(paramFields, inputParams);
+    console.log('transformed', transformed);
+    console.log('callable', callable);
+    console.log('palletRpc', palletRpc);
     const unsub = await api.query[palletRpc][callable](...transformed, queryResHandler);
     setUnsub(() => unsub);
   };

@@ -14,15 +14,15 @@ use frame_support::traits::{Currency, ReservableCurrency};
 use frame_support::{decl_event, decl_module, decl_storage, ensure, sp_runtime::ModuleId};
 use x_core::Error;
 
-type BalanceOf<T> = <<T as Trait>::DOT as Currency<<T as system::Trait>::AccountId>>::Balance;
+pub type BalanceOf<T> = <<T as Trait>::XOR as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 /// The collateral's module id, used for deriving its sovereign account ID.
 const _MODULE_ID: ModuleId = ModuleId(*b"ily/cltl");
 
 /// The pallet's configuration trait.
 pub trait Trait: system::Trait {
-    /// The DOT currency
-    type DOT: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+    /// The XOR currency
+    type XOR: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
@@ -35,7 +35,7 @@ decl_storage! {
         /// Note that account's balances and locked balances are handled
         /// through the Balances module.
         ///
-        /// Total locked DOT collateral
+        /// Total locked XOR collateral
         TotalCollateral: BalanceOf<T>;
     }
 }
@@ -62,11 +62,11 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
-    /// Total supply of DOT
+    /// Total supply of XOR
     pub fn get_total_supply() -> BalanceOf<T> {
-        T::DOT::total_issuance()
+        T::XOR::total_issuance()
     }
-    /// Total locked DOT collateral
+    /// Total locked XOR collateral
     pub fn get_total_collateral() -> BalanceOf<T> {
         <TotalCollateral<T>>::get()
     }
@@ -82,21 +82,21 @@ impl<T: Trait> Module<T> {
     }
     /// Balance of an account (wrapper)
     pub fn get_balance_from_account(account: &T::AccountId) -> BalanceOf<T> {
-        T::DOT::free_balance(account)
+        T::XOR::free_balance(account)
     }
     /// Locked balance of account
     pub fn get_collateral_from_account(account: &T::AccountId) -> BalanceOf<T> {
-        T::DOT::reserved_balance(account)
+        T::XOR::reserved_balance(account)
     }
 
-    /// Lock DOT collateral
+    /// Lock XOR collateral
     ///
     /// # Arguments
     ///
     /// * `sender` - the account locking tokens
-    /// * `amount` - to be locked amount of DOT
+    /// * `amount` - to be locked amount of XOR
     pub fn lock_collateral(sender: &T::AccountId, amount: BalanceOf<T>) -> Result<(), Error> {
-        T::DOT::reserve(sender, amount).map_err(|_| Error::InsufficientFunds)?;
+        T::XOR::reserve(sender, amount).map_err(|_| Error::InsufficientFunds)?;
 
         Self::increase_total_collateral(amount);
 
@@ -104,18 +104,18 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    /// Release DOT collateral
+    /// Release XOR collateral
     ///
     /// # Arguments
     ///
     /// * `sender` - the account releasing tokens
-    /// * `amount` - the to be released amount of DOT
+    /// * `amount` - the to be released amount of XOR
     pub fn release_collateral(sender: &T::AccountId, amount: BalanceOf<T>) -> Result<(), Error> {
         ensure!(
-            T::DOT::reserved_balance(&sender) >= amount,
+            T::XOR::reserved_balance(&sender) >= amount,
             Error::InsufficientCollateralAvailable
         );
-        T::DOT::unreserve(sender, amount);
+        T::XOR::unreserve(sender, amount);
 
         Self::decrease_total_collateral(amount);
 
@@ -124,7 +124,7 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    /// Slash DOT collateral and assign to a receiver. Can only fail if
+    /// Slash XOR collateral and assign to a receiver. Can only fail if
     /// the sender account has too low collateral.
     ///
     /// # Arguments
@@ -138,18 +138,18 @@ impl<T: Trait> Module<T> {
         amount: BalanceOf<T>,
     ) -> Result<(), Error> {
         ensure!(
-            T::DOT::reserved_balance(&sender) >= amount,
+            T::XOR::reserved_balance(&sender) >= amount,
             Error::InsufficientCollateralAvailable
         );
 
         // slash the sender's collateral
-        let (slashed, _remainder) = T::DOT::slash_reserved(&sender, amount);
+        let (slashed, _remainder) = T::XOR::slash_reserved(&sender, amount);
 
         // add slashed amount to receiver and create account if it does not exists
-        T::DOT::resolve_creating(&receiver, slashed);
+        T::XOR::resolve_creating(&receiver, slashed);
 
         // reserve the created amount for the receiver
-        T::DOT::reserve(&receiver, amount).map_err(|_| Error::InsufficientFunds)?;
+        T::XOR::reserve(&receiver, amount).map_err(|_| Error::InsufficientFunds)?;
 
         Self::deposit_event(RawEvent::SlashCollateral(sender, receiver, amount));
 

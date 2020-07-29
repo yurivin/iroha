@@ -74,7 +74,7 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
     // #[cfg(feature = "ocw")]
     {
         if let Some(seed) = dev_seed {
-            use sp_core::ed25519::Pair;
+            use sp_core::sr25519::Pair;
             // println!("{:?}", Pair::from_string_with_seed(&seed, None).unwrap().0.encode());
             service
 					.keystore()

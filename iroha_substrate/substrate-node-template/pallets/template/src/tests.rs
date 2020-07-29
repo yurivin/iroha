@@ -28,7 +28,7 @@ mod tests {
     }
 
     use async_std::task;
-    use iroha::{config::Configuration, isi, prelude::*, bridge};
+    use iroha::{bridge, config::Configuration, isi, prelude::*};
     use iroha_client::{
         client::{self, Client},
         config::Configuration as ClientConfiguration,

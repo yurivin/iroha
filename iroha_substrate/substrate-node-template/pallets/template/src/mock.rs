@@ -1,25 +1,26 @@
 // Creating mock runtime here
 
 use crate::{Module, Trait};
-use sp_core::H256;
 use frame_support::{impl_outer_origin, parameter_types, weights::Weight};
-use sp_runtime::{
-	traits::{BlakeTwo256, IdentityLookup}, testing::Header, Perbill,
-};
 use frame_system as system;
+use sp_core::H256;
+use sp_runtime::{
+    testing::Header,
+    traits::{BlakeTwo256, IdentityLookup},
+    Perbill,
+};
 // use crate::Call;
 use system::Call;
 
 // use sp_api::impl_runtime_apis;
-use sp_core::{Encode, OpaqueMetadata, };
+use sp_core::{Encode, OpaqueMetadata};
 use sp_runtime::traits::{
-	Block as BlockT, IdentifyAccount, SaturatedConversion, Saturating,
-	Verify,
+    Block as BlockT, IdentifyAccount, SaturatedConversion, Saturating, Verify,
 };
 use sp_runtime::{
-	create_runtime_str, generic,
-	transaction_validity::{TransactionSource, TransactionValidity},
-	ApplyExtrinsicResult, MultiSignature,
+    create_runtime_str, generic,
+    transaction_validity::{TransactionSource, TransactionValidity},
+    ApplyExtrinsicResult, MultiSignature,
 };
 use sp_std::prelude::*;
 
@@ -28,12 +29,12 @@ use sp_std::prelude::*;
 // use sp_version::RuntimeVersion;
 // use codec::Decode;
 // use system::mock::{Call};
-use sp_core::offchain::{testing, TransactionPoolExt};
-use sp_runtime::testing::{UintAuthorityId, TestSignature, TestXt};
 use frame_system::offchain::*;
+use sp_core::offchain::{testing, TransactionPoolExt};
+use sp_runtime::testing::{TestSignature, TestXt, UintAuthorityId};
 
 impl_outer_origin! {
-	pub enum Origin for TestRuntime {}
+    pub enum Origin for TestRuntime {}
 }
 
 // For testing the pallet, we construct most of a mock runtime. This means
@@ -42,58 +43,58 @@ impl_outer_origin! {
 #[derive(Clone, Eq, PartialEq)]
 pub struct TestRuntime;
 parameter_types! {
-	pub const BlockHashCount: u64 = 250;
-	pub const MaximumBlockWeight: Weight = 1024;
-	pub const MaximumBlockLength: u32 = 2 * 1024;
-	pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
-	pub const UnsignedPriority: u64 = 100;
+    pub const BlockHashCount: u64 = 250;
+    pub const MaximumBlockWeight: Weight = 1024;
+    pub const MaximumBlockLength: u32 = 2 * 1024;
+    pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
+    pub const UnsignedPriority: u64 = 100;
 }
 
 impl system::Trait for TestRuntime {
-	type BaseCallFilter = ();
-	type Origin = Origin;
-	type Call = ();
-	type Index = u64;
-	type BlockNumber = u64;
-	type Hash = H256;
-	type Hashing = BlakeTwo256;
-	type AccountId = u64;
-	type Lookup = IdentityLookup<Self::AccountId>;
-	type Header = Header;
-	type Event = ();
-	type BlockHashCount = BlockHashCount;
-	type MaximumBlockWeight = MaximumBlockWeight;
-	type DbWeight = ();
-	type BlockExecutionWeight = ();
-	type ExtrinsicBaseWeight = ();
-	type MaximumExtrinsicWeight = MaximumBlockWeight;
-	type MaximumBlockLength = MaximumBlockLength;
-	type AvailableBlockRatio = AvailableBlockRatio;
-	type Version = ();
-	type ModuleToIndex = ();
-	type AccountData = ();
-	type OnNewAccount = ();
-	type OnKilledAccount = ();
+    type BaseCallFilter = ();
+    type Origin = Origin;
+    type Call = ();
+    type Index = u64;
+    type BlockNumber = u64;
+    type Hash = H256;
+    type Hashing = BlakeTwo256;
+    type AccountId = u64;
+    type Lookup = IdentityLookup<Self::AccountId>;
+    type Header = Header;
+    type Event = ();
+    type BlockHashCount = BlockHashCount;
+    type MaximumBlockWeight = MaximumBlockWeight;
+    type DbWeight = ();
+    type BlockExecutionWeight = ();
+    type ExtrinsicBaseWeight = ();
+    type MaximumExtrinsicWeight = MaximumBlockWeight;
+    type MaximumBlockLength = MaximumBlockLength;
+    type AvailableBlockRatio = AvailableBlockRatio;
+    type Version = ();
+    type ModuleToIndex = ();
+    type AccountData = ();
+    type OnNewAccount = ();
+    type OnKilledAccount = ();
 }
 
 impl Trait for TestRuntime {
-	type Event = ();
-	type AuthorityId = crate::crypto::TestAuthId;
-	type Call = Call;
-	// type Event = Event;
-	type UnsignedPriority = UnsignedPriority;
+    type Event = ();
+    type AuthorityId = crate::crypto::TestAuthId;
+    type Call = Call;
+    // type Event = Event;
+    type UnsignedPriority = UnsignedPriority;
 }
 
 impl frame_system::offchain::SigningTypes for TestRuntime {
-	type Public = UintAuthorityId;
-	type Signature = TestSignature;
+    type Public = UintAuthorityId;
+    type Signature = TestSignature;
 }
 
 type Extrinsic = TestXt<Call, ()>;
 
 impl frame_system::offchain::SendTransactionTypes<Call> for TestRuntime {
-	type Extrinsic = Extrinsic;
-	type OverarchingCall = Call;
+    type Extrinsic = Extrinsic;
+    type OverarchingCall = Call;
 }
 
 // #[derive(codec::Encode, codec::Decode)]
@@ -114,9 +115,9 @@ struct DummyAppCrypto;
 // both application-specific crypto and the runtime crypto, but in real-life
 // runtimes it's going to use different types everywhere.
 impl AppCrypto<UintAuthorityId, TestSignature> for DummyAppCrypto {
-	type RuntimeAppPublic = UintAuthorityId;
-	type GenericPublic = UintAuthorityId;
-	type GenericSignature = TestSignature;
+    type RuntimeAppPublic = UintAuthorityId;
+    type GenericPublic = UintAuthorityId;
+    type GenericSignature = TestSignature;
 }
 
 // impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
@@ -179,5 +180,8 @@ impl AppCrypto<UintAuthorityId, TestSignature> for DummyAppCrypto {
 // This function basically just builds a genesis storage key/value store according to
 // our desired mockup.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-	system::GenesisConfig::default().build_storage::<TestRuntime>().unwrap().into()
+    system::GenesisConfig::default()
+        .build_storage::<TestRuntime>()
+        .unwrap()
+        .into()
 }

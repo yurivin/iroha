@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use async_std::task;
-    use iroha::{config::Configuration, isi, prelude::*, bridge};
+    use iroha::{bridge, config::Configuration, isi, prelude::*};
     use iroha_client::{
         client::{self, Client},
         config::Configuration as ClientConfiguration,
@@ -17,8 +17,20 @@ mod tests {
         // Given
         thread::spawn(create_and_start_iroha);
 
-        let bpk = PublicKey { inner: [52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
-        let bsk = PrivateKey { inner: vec![250, 199, 149, 157, 191, 231, 47, 5, 46, 90, 12, 60, 141, 101, 48, 242, 2, 176, 47, 216, 249, 245, 202, 53, 128, 236, 141, 235, 119, 151, 71, 158,     52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239] };
+        let bpk = PublicKey {
+            inner: [
+                52, 80, 113, 218, 85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102,
+                51, 56, 163, 143, 125, 160, 223, 33, 190, 90, 180, 224, 85, 239,
+            ],
+        };
+        let bsk = PrivateKey {
+            inner: vec![
+                250, 199, 149, 157, 191, 231, 47, 5, 46, 90, 12, 60, 141, 101, 48, 242, 2, 176, 47,
+                216, 249, 245, 202, 53, 128, 236, 141, 235, 119, 151, 71, 158, 52, 80, 113, 218,
+                85, 229, 220, 206, 250, 170, 68, 3, 57, 65, 94, 249, 242, 102, 51, 56, 163, 143,
+                125, 160, 223, 33, 190, 90, 180, 224, 85, 239,
+            ],
+        };
 
         thread::sleep(std::time::Duration::from_millis(100));
         let configuration =
@@ -64,7 +76,7 @@ mod tests {
 
         let bridge_domain_name = "polkadot".to_string();
         let bridge_def_id = BridgeDefinitionId {
-            name:  bridge_domain_name.clone(),
+            name: bridge_domain_name.clone(),
         };
         let bridge_def = BridgeDefinition {
             id: bridge_def_id.clone(),
@@ -82,20 +94,21 @@ mod tests {
         let register_client = bridge::isi::add_client(&bridge_def_id, bpk.clone());
         let dot_asset_def = AssetDefinition::new(AssetDefinitionId {
             name: "DOT".to_string(),
-            domain_name:  bridge_domain_name.clone(),
+            domain_name: bridge_domain_name.clone(),
         });
         let register_dot_asset = Register::new(dot_asset_def, bridge_domain_name.clone()).into();
         let xor_asset_def = AssetDefinition::new(AssetDefinitionId {
             name: "XOR".to_string(),
             domain_name: "global".into(),
         });
-        let register_xor_asset = Register::new(xor_asset_def.clone(), domain_name.to_owned()).into();
+        let register_xor_asset =
+            Register::new(xor_asset_def.clone(), domain_name.to_owned()).into();
         let register_ext_asset = bridge::isi::register_external_asset(&ext_asset);
         let mint_xor = Mint::new(
             100u32,
             AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
         )
-            .into();
+        .into();
         let bridge_account_id = AccountId::new("bridge", "polkadot");
         let transfer_xor = Transfer::new(
             account_id.clone(),
@@ -105,7 +118,7 @@ mod tests {
             ),
             bridge_account_id.clone(),
         )
-            .into();
+        .into();
 
         iroha_client
             .submit_all(vec![
@@ -175,5 +188,4 @@ mod tests {
         #[allow(clippy::empty_loop)]
         loop {}
     }
-
 }
