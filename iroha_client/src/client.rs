@@ -1,6 +1,6 @@
 use crate::config::Configuration;
 use async_std::stream::Stream;
-use iroha::{crypto::KeyPair, prelude::*, torii::uri};
+use iroha::{crypto::KeyPair, crypto::PublicKey, prelude::*, torii::uri};
 use iroha_derive::log;
 use iroha_network::{prelude::*, Network};
 use std::{
@@ -11,6 +11,7 @@ use std::{
 pub struct Client {
     torii_url: String,
     key_pair: KeyPair,
+    account_id: <Account as Identifiable>::Id,
 }
 
 /// Representation of `Iroha` client.
@@ -18,7 +19,14 @@ impl Client {
     pub fn new(configuration: &Configuration) -> Self {
         Client {
             torii_url: configuration.torii_url.clone(),
-            key_pair: KeyPair::generate().expect("Failed to generate KeyPair."),
+            key_pair: KeyPair {
+                public_key: configuration.public_key.clone(),
+                private_key: configuration.private_key.clone(),
+            }, //KeyPair::generate().expect("Failed to generate KeyPair."),
+            account_id: iroha::account::Id::new(
+                &configuration.account_name,
+                &configuration.domain_name,
+            ),
         }
     }
 
@@ -27,7 +35,7 @@ impl Client {
     pub async fn submit(&mut self, instruction: Instruction) -> Result<(), String> {
         let network = Network::new(&self.torii_url);
         let transaction: RequestedTransaction =
-            RequestedTransaction::new(vec![instruction], iroha::account::Id::new("root", "global"))
+            RequestedTransaction::new(vec![instruction], self.account_id.clone())
                 .accept()?
                 .sign(&self.key_pair)?
                 .into();
@@ -53,7 +61,7 @@ impl Client {
     pub async fn submit_all(&mut self, instructions: Vec<Instruction>) -> Result<(), String> {
         let network = Network::new(&self.torii_url);
         let transaction: RequestedTransaction =
-            RequestedTransaction::new(instructions, iroha::account::Id::new("root", "global"))
+            RequestedTransaction::new(instructions, self.account_id.clone())
                 .accept()?
                 .sign(&self.key_pair)?
                 .into();
@@ -182,5 +190,15 @@ pub mod assets {
 
     pub fn by_account_id(account_id: <Account as Identifiable>::Id) -> QueryRequest {
         GetAccountAssets::build_request(account_id)
+    }
+}
+
+pub mod util {
+    use super::*;
+
+    pub fn public_key_from_str(input: &str) -> Result<PublicKey, String> {
+        let public_key: PublicKey = serde_json::from_str(&format!("{{\"inner\":{}}}", input))
+            .map_err(|e| format!("Failed to parse public key: {}", e))?;
+        Ok(public_key)
     }
 }

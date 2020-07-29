@@ -1,5 +1,6 @@
 //! This module contains functionality related to `DEX`.
 
+use crate::permission::*;
 use crate::prelude::*;
 use integer_sqrt::*;
 use iroha_derive::Io;
@@ -132,8 +133,10 @@ impl TokenPair {
 /// liquidity source type.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub struct LiquiditySourceId {
-    token_pair_id: <TokenPair as Identifiable>::Id,
-    liquidity_source_type: LiquiditySourceType,
+    /// Identifier of containing token pair.
+    pub token_pair_id: <TokenPair as Identifiable>::Id,
+    /// Type of liquidity source.
+    pub liquidity_source_type: LiquiditySourceType,
 }
 
 impl LiquiditySourceId {
@@ -185,8 +188,10 @@ pub enum LiquiditySourceData {
 /// are handled through it.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub struct LiquiditySource {
-    id: <LiquiditySource as Identifiable>::Id,
-    data: LiquiditySourceData,
+    /// Identification of Liquidity source.
+    pub id: <LiquiditySource as Identifiable>::Id,
+    /// Varients represent LiquiditySourceType-specific data set for Liquidity Source.
+    pub data: LiquiditySourceData,
 }
 
 impl Identifiable for LiquiditySource {
@@ -236,6 +241,12 @@ pub mod isi {
         /// Variant of instruction to deposit tokens to liquidity pool.
         /// `LiquiditySource` <-- Amount Base Desired, Amount Target Desired, Amount Base Min, Amount Target Min
         AddLiquidityToXYKPool(<LiquiditySource as Identifiable>::Id, u32, u32, u32, u32),
+        /// Variant of instruction to mint permissions needeed for trading on dex for account.
+        /// TODO: this ISI is for debug purposes and should be deleted later
+        ActivateXYKPoolTraderAccount(
+            <LiquiditySource as Identifiable>::Id,
+            <Account as Identifiable>::Id,
+        ),
     }
 
     impl DEXInstruction {
@@ -279,6 +290,14 @@ pub mod isi {
                     authority,
                     world_state_view,
                 ),
+                DEXInstruction::ActivateXYKPoolTraderAccount(liquidity_source_id, account_id) => {
+                    activate_trader_account_execute(
+                        liquidity_source_id.clone(),
+                        account_id.clone(),
+                        authority,
+                        world_state_view,
+                    )
+                }
             }
         }
     }
@@ -574,8 +593,7 @@ pub mod isi {
         authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        let liquidity_source =
-            get_liquidity_source(&liquidity_source_id, world_state_view)?.clone();
+        let liquidity_source = get_liquidity_source(&liquidity_source_id, world_state_view)?;
         let token_pair_id = &liquidity_source_id.token_pair_id;
 
         // TODO: consider wrapping data into struct contained in enum
@@ -722,7 +740,6 @@ pub mod isi {
         k_last: u32,
         fee_to: Option<<Account as Identifiable>::Id>,
         total_supply: u32,
-        // authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(u32, u32, u32, u32), String> {
         let (mut k_last, total_supply) = mint_pswap_fee(
@@ -831,12 +848,66 @@ pub mod isi {
         Ok(())
     }
 
+    /// Mint permissions required to participate in trades
+    ///
+    /// TODO: this function has unchecked operations and exists solely for debug purposes
+    fn activate_trader_account_execute(
+        liquidity_source_id: <LiquiditySource as Identifiable>::Id,
+        account_id: <Account as Identifiable>::Id,
+        _authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        match liquidity_source_id.liquidity_source_type.clone() {
+            LiquiditySourceType::XYKPool => {
+                let domain_name = account_id.domain_name.clone();
+                let permission_asset_definition_id = permission_asset_definition_id();
+                let asset_id = AssetId {
+                    definition_id: permission_asset_definition_id.clone(),
+                    account_id: account_id.clone(),
+                };
+                let liquidity_source =
+                    get_liquidity_source(&liquidity_source_id, world_state_view)?;
+                if let LiquiditySourceData::XYKPool {
+                    pswap_asset_definition_id,
+                    ..
+                } = &liquidity_source.data
+                {
+                    let asset = Asset::with_permissions(
+                        asset_id.clone(),
+                        &[
+                            Permission::TransferAsset(
+                                None,
+                                Some(liquidity_source_id.token_pair_id.base_asset.clone()),
+                            ),
+                            Permission::TransferAsset(
+                                None,
+                                Some(liquidity_source_id.token_pair_id.target_asset.clone()),
+                            ),
+                            Permission::TransferAsset(
+                                None,
+                                Some(pswap_asset_definition_id.clone()),
+                            ),
+                        ],
+                    );
+                    let domain = get_domain_mut(&domain_name, world_state_view)?;
+                    domain
+                        .accounts
+                        .get_mut(&account_id)
+                        .ok_or("failed to find account")?
+                        .assets
+                        .insert(asset_id, asset);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
         use crate::account::query::*;
         use crate::peer::PeerId;
-        use crate::permission::*;
         use crate::query::QueryResult;
         use std::collections::BTreeMap;
 
@@ -1267,9 +1338,6 @@ pub mod isi {
             }
         }
 
-        // TODO: tests with multiple consecutive AddLiquidity
-        // TODO: tests for AddLiquidity with fee
-
         #[test]
         fn test_mint_pswap_should_pass() {
             let mut testkit = TestKit::new();
@@ -1377,6 +1445,9 @@ pub mod isi {
             let result = xyk_pool_quote(1000, 0, 10000).unwrap_err();
             assert_eq!(result, "insufficient liquidity");
         }
+
+        // TODO: tests with multiple consecutive AddLiquidity
+        // TODO: tests for AddLiquidity with feeOn
     }
 }
 

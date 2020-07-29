@@ -102,7 +102,7 @@ mod account {
     use clap::ArgMatches;
     use futures::executor;
     use iroha::{isi, prelude::*};
-    use iroha_client::{client::Client, config::Configuration};
+    use iroha_client::{client::util::*, client::Client, config::Configuration};
 
     const REGISTER: &str = "register";
     const ACCOUNT_NAME: &str = "name";
@@ -157,10 +157,10 @@ mod account {
         }
     }
 
-    fn create_account(account_name: &str, domain_name: &str, _public_key: &str) {
-        let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+    fn create_account(account_name: &str, domain_name: &str, public_key: &str) {
+        let public_key = public_key_from_str(public_key).unwrap();
         let create_account = isi::Register {
-            object: Account::with_signatory(account_name, domain_name, key_pair.public_key),
+            object: Account::with_signatory(account_name, domain_name, public_key),
             destination_id: String::from(domain_name),
         };
         let mut iroha_client = Client::new(
@@ -318,7 +318,9 @@ mod dex {
     use super::*;
     use clap::ArgMatches;
     use futures::executor;
-    use iroha::dex::query::{GetDEXList, GetTokenPairList};
+    use iroha::dex::isi::*;
+    use iroha::dex::query::*;
+    use iroha::dex::*;
     use iroha::{isi, prelude::*};
     use iroha_client::{
         client::{self, Client},
@@ -330,10 +332,19 @@ mod dex {
     const CREATE: &str = "create";
     const REMOVE: &str = "remove";
     const LIST: &str = "list";
+    const GET: &str = "get";
+    const ACCOUNT_NAME: &str = "account";
     const OWNER_ACCOUNT_ID: &str = "owner_account_id";
     const DOMAIN_NAME: &str = "domain";
     const BASE: &str = "base";
     const TARGET: &str = "target";
+    const XYK_POOL: &str = "xyk_pool";
+    const BASE_AMOUNT: &str = "base_amount";
+    const TARGET_AMOUNT: &str = "target_amount";
+    const LIQUIDITY: &str = "liquidity";
+    const ADD_LIQUIDITY: &str = "add_liquidity";
+    const REMOVE_LIQUIDITY: &str = "remove_liquidity";
+    const ACTIVATE_ACCOUNT: &str = "activate_account";
 
     pub fn build_app<'a, 'b>() -> App<'a, 'b> {
         App::new(DEX)
@@ -363,27 +374,63 @@ mod dex {
                     .about("Use this command to list all active DEX in Iroha Peer.")
             )
             .subcommand(
+                App::new(GET)
+                    .about("Use this command to get particular DEX information.")
+                    .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+            )
+            .subcommand(
                 App::new(TOKEN_PAIR)
                     .about("Use this command to work with TokenPair Entities in active DEX.")
+                    .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
                     .subcommand(
                         App::new(CREATE)
                             .about("Use this command to create a new Token Pair for existing Assets.")
-                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
                             .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
                             .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
                     )
                     .subcommand(
                         App::new(REMOVE)
                             .about("Use this command to delete existing Token Pair from the DEX.")
-                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                    )
+                    .subcommand(
+                        App::new(GET)
+                            .about("Use this command to get information about existing Token Pair from the DEX.")
                             .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
                             .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
                     )
                     .subcommand(
                         App::new(LIST)
                             .about("Use this command to list all active Token Pairs in a DEX.")
-                            .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
                     )
+            )
+            .subcommand(
+                App::new(XYK_POOL)
+                        .about("Use this command to work with LiquditySource of type XYK Pool in active TokenPair.")
+                        .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                        .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
+                        .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                        .subcommand(
+                            App::new(CREATE)
+                            .about("Use this command to create a new XYK Pool for existing TokenPair.")
+                        )
+                        .subcommand(
+                            App::new(ADD_LIQUIDITY)
+                            .about("Use this command to add liquidity to XYK Pool with desired amounts of both tokens in exchange pair.")
+                            .arg(Arg::with_name(BASE_AMOUNT).long(BASE_AMOUNT).value_name(BASE_AMOUNT).help("Desired amount of Base Asset to deposit.").takes_value(true).required(true))
+                            .arg(Arg::with_name(TARGET_AMOUNT).long(TARGET_AMOUNT).value_name(TARGET_AMOUNT).help("Desired amount of Target Asset to deposit.").takes_value(true).required(true))
+                        )
+                        .subcommand(
+                            App::new(REMOVE_LIQUIDITY)
+                            .about("Use this command to remove liquidity from XYK Pool with desired amounts of both tokens in exchange pair.")
+                            .arg(Arg::with_name(LIQUIDITY).long(LIQUIDITY).value_name(LIQUIDITY).help("Desired amount of Liquidity Asset to be burned.").takes_value(true).required(true))
+                        )
+                        .subcommand(
+                            App::new(ACTIVATE_ACCOUNT)
+                            .about("Use this command to activate account for trading on this pool.")
+                            .arg(Arg::with_name(ACCOUNT_NAME).long(ACCOUNT_NAME).value_name(ACCOUNT_NAME).help("Account name without domain indication.").takes_value(true).required(true))
+                        )
             )
     }
 
@@ -398,12 +445,18 @@ mod dex {
             }
         }
         if let Some(ref _matches) = matches.subcommand_matches(LIST) {
-            println!("Listing all active DEX");
+            println!("Listing all active DEX.");
             list_dex();
         }
+        if let Some(ref matches) = matches.subcommand_matches(GET) {
+            if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                println!("Getting DEX in the domain: {}", domain_name);
+                get_dex(domain_name);
+            }
+        }
         if let Some(ref matches) = matches.subcommand_matches(TOKEN_PAIR) {
-            if let Some(ref matches) = matches.subcommand_matches(CREATE) {
-                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+            if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                if let Some(ref matches) = matches.subcommand_matches(CREATE) {
                     println!("Creating Token Pair in the domain: {}", domain_name);
                     if let Some(base_asset) = matches.value_of(BASE) {
                         println!(
@@ -419,9 +472,7 @@ mod dex {
                         }
                     }
                 }
-            }
-            if let Some(ref matches) = matches.subcommand_matches(REMOVE) {
-                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                if let Some(ref matches) = matches.subcommand_matches(REMOVE) {
                     println!("Removing Token Pair in the domain: {}", domain_name);
                     if let Some(base_asset) = matches.value_of(BASE) {
                         println!("Removing Token Pair with base asset: {}", base_asset);
@@ -431,11 +482,70 @@ mod dex {
                         }
                     }
                 }
-            }
-            if let Some(ref matches) = matches.subcommand_matches(LIST) {
-                if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                if let Some(ref matches) = matches.subcommand_matches(LIST) {
                     println!("Listing active Token Pairs in the domain: {}", domain_name);
                     list_token_pairs(domain_name)
+                }
+                if let Some(ref matches) = matches.subcommand_matches(GET) {
+                    println!("Getting Token Pair in the domain: {}", domain_name);
+                    if let Some(base_asset) = matches.value_of(BASE) {
+                        println!("Getting Token Pair with base asset: {}", base_asset);
+                        if let Some(target_asset) = matches.value_of(TARGET) {
+                            println!("Getting Token Pair with target asset: {}", target_asset);
+                            get_token_pair(domain_name, base_asset, target_asset);
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref matches) = matches.subcommand_matches(XYK_POOL) {
+            if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
+                if let Some(base_asset) = matches.value_of(BASE) {
+                    if let Some(target_asset) = matches.value_of(TARGET) {
+                        if let Some(ref matches) = matches.subcommand_matches(CREATE) {
+                            println!(
+                                "Creating XYK Pool in the domain: {} with base: {} and target: {}",
+                                domain_name, base_asset, target_asset
+                            );
+                            create_xyk_pool_cli(domain_name, base_asset, target_asset);
+                        }
+                        if let Some(ref matches) = matches.subcommand_matches(ADD_LIQUIDITY) {
+                            println!(
+                                "Adding liquidity into XYK Pool in the domain: {} with base: {} and target: {}",
+                                domain_name, base_asset, target_asset
+                            );
+                            if let Some(base_amount) = matches.value_of(BASE_AMOUNT) {
+                                if let Some(target_amount) = matches.value_of(TARGET_AMOUNT) {
+                                    println!(
+                                        "Adding liquidity into XYK Pool for Token Pair with Base Asset: {} of quantity: {}",
+                                        base_asset, base_amount
+                                    );
+                                    println!(
+                                        "Adding liquidity into XYK Pool for Token Pair with Target Asset: {} of quantity: {}",
+                                        base_asset, target_amount
+                                    );
+                                    add_liquidity(
+                                        domain_name,
+                                        base_asset,
+                                        target_asset,
+                                        base_amount,
+                                        target_amount,
+                                    );
+                                }
+                            }
+                        }
+                        if let Some(ref matches) = matches.subcommand_matches(ACTIVATE_ACCOUNT) {
+                            if let Some(account_name) = matches.value_of(ACCOUNT_NAME) {
+                                println!("Activating XYK Pool trading account: {}", account_name);
+                                activate_account_xyk_pool(
+                                    domain_name,
+                                    account_name,
+                                    base_asset,
+                                    target_asset,
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -466,6 +576,19 @@ mod dex {
             .expect("Failed to list DEX.");
         if let QueryResult::GetDEXList(result) = query_result {
             println!("Get DEX list result: {:?}", result);
+        }
+    }
+
+    fn get_dex(domain_name: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let query_result = executor::block_on(iroha_client.request(&GetDEX::build_request(
+            <Domain as Identifiable>::Id::from(domain_name),
+        )))
+        .expect("Failed to get DEX information.");
+        if let QueryResult::GetDEX(result) = query_result {
+            println!("Get DEX infomation result: {:?}", result);
         }
     }
 
@@ -519,5 +642,115 @@ mod dex {
         if let QueryResult::GetTokenPairList(result) = query_result {
             println!("Get TokenPair list result: {:?}", result);
         }
+    }
+
+    fn get_token_pair(domain_name: &str, base_asset: &str, target_asset: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(
+            DEXId::new(domain_name),
+            base_asset_definition_id,
+            target_asset_definition_id,
+        );
+        let query_result =
+            executor::block_on(iroha_client.request(&GetTokenPair::build_request(token_pair_id)))
+                .expect("Failed to get Token Pair information.");
+        if let QueryResult::GetTokenPair(result) = query_result {
+            println!("Get TokenPair information result: {:?}", result);
+        }
+    }
+
+    fn create_xyk_pool_cli(domain_name: &str, base_asset: &str, target_asset: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(
+            DEXId::new(domain_name),
+            base_asset_definition_id,
+            target_asset_definition_id,
+        );
+        executor::block_on(iroha_client.submit(create_xyk_pool(token_pair_id)))
+            .expect("Failed to create XYK Pool.");
+    }
+
+    fn activate_account_xyk_pool(
+        domain_name: &str,
+        account_name: &str,
+        base_asset: &str,
+        target_asset: &str,
+    ) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let account_id = AccountId::new(account_name, domain_name);
+        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(
+            DEXId::new(domain_name),
+            base_asset_definition_id,
+            target_asset_definition_id,
+        );
+        let liquidity_source_id =
+            LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
+        let instruction = Instruction::DEX(DEXInstruction::ActivateXYKPoolTraderAccount(
+            liquidity_source_id,
+            account_id,
+        ));
+        executor::block_on(iroha_client.submit(instruction))
+            .expect("Failed to activate account for XYK Pool use.")
+    }
+
+    fn add_liquidity(
+        domain_name: &str,
+        base_asset: &str,
+        target_asset: &str,
+        base_amount: &str,
+        target_amount: &str,
+    ) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let amount_a_desired = base_amount
+            .parse()
+            .expect("Failed to parse Asset quantity for Base.");
+        let amount_b_desired = target_amount
+            .parse()
+            .expect("Failed to parse Asset quantity for Target.");
+        let amount_a_min = 0u32;
+        let amount_b_min = 0u32;
+        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(
+            DEXId::new(domain_name),
+            base_asset_definition_id,
+            target_asset_definition_id,
+        );
+        let liquidity_source_id =
+            LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
+        executor::block_on(iroha_client.submit(xyk_pool_add_liquidity(
+            liquidity_source_id,
+            amount_a_desired,
+            amount_b_desired,
+            amount_a_min,
+            amount_b_min,
+        )))
+        .expect("Failed to add liquidity into XYK Pool.");
+    }
+
+    fn remove_liquidity(domain_name: &str, base_asset: &str, target_asset: &str, liquidity: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let liquidity_quantity: u32 = liquidity
+            .parse()
+            .expect("Failed to parse Asset quantity for Liquidity.");
+        let amount_a_min = 0u32;
+        let amount_b_min = 0u32;
+        unimplemented!()
     }
 }

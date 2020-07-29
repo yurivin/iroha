@@ -1,4 +1,4 @@
-use iroha::{config::Configuration as IrohaConfiguration, crypto::PublicKey};
+use iroha::{config::Configuration as IrohaConfiguration, crypto::PrivateKey, crypto::PublicKey};
 use iroha_derive::*;
 use serde::Deserialize;
 use std::{env, fmt::Debug, fs::File, io::BufReader, path::Path};
@@ -8,6 +8,8 @@ const TORII_CONNECT_URL: &str = "TORII_CONNECT_URL";
 const IROHA_PUBLIC_KEY: &str = "IROHA_PUBLIC_KEY";
 const DEFAULT_TORII_URL: &str = "127.0.0.1:1337";
 const DEFAULT_TORII_CONNECT_URL: &str = "127.0.0.1:8888";
+const DEFUALT_ACCOUNT_NAME: &str = "root";
+const DEFAULT_DOMAIN_NAME: &str = "global";
 
 /// `Configuration` provides an ability to define client parameters such as `TORII_URL`.
 #[derive(Clone, Deserialize, Debug)]
@@ -15,12 +17,20 @@ const DEFAULT_TORII_CONNECT_URL: &str = "127.0.0.1:8888";
 pub struct Configuration {
     /// Public key of this client.
     pub public_key: PublicKey,
+    /// Private key of this client.
+    pub private_key: PrivateKey,
     /// Torii URL.
     #[serde(default = "default_torii_url")]
     pub torii_url: String,
     /// Torii connection URL.
     #[serde(default = "default_torii_connect_url")]
     pub torii_connect_url: String,
+    /// Account name of client.
+    #[serde(default = "default_account_name")]
+    pub account_name: String,
+    /// Domain of client's account.
+    #[serde(default = "default_domain_name")]
+    pub domain_name: String,
 }
 
 impl Configuration {
@@ -43,8 +53,11 @@ impl Configuration {
     pub fn from_iroha_configuration(configuration: &IrohaConfiguration) -> Self {
         Configuration {
             torii_url: configuration.torii_configuration.torii_url.clone(),
-            public_key: configuration.public_key,
+            public_key: configuration.public_key.clone(),
+            private_key: configuration.private_key.clone(),
             torii_connect_url: default_torii_connect_url(),
+            account_name: default_account_name(),
+            domain_name: default_domain_name(),
         }
     }
 
@@ -72,4 +85,12 @@ fn default_torii_url() -> String {
 
 fn default_torii_connect_url() -> String {
     DEFAULT_TORII_CONNECT_URL.to_string()
+}
+
+fn default_account_name() -> String {
+    DEFUALT_ACCOUNT_NAME.to_string()
+}
+
+fn default_domain_name() -> String {
+    DEFAULT_DOMAIN_NAME.to_string()
 }
