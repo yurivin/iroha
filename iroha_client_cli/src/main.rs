@@ -101,6 +101,7 @@ mod account {
     use super::*;
     use clap::ArgMatches;
     use futures::executor;
+    use iroha::account::query;
     use iroha::{isi, prelude::*};
     use iroha_client::{client::util::*, client::Client, config::Configuration};
 
@@ -108,6 +109,7 @@ mod account {
     const ACCOUNT_NAME: &str = "name";
     const ACCOUNT_DOMAIN_NAME: &str = "domain";
     const ACCOUNT_KEY: &str = "key";
+    const GET: &str = "get";
 
     pub fn build_app<'a, 'b>() -> App<'a, 'b> {
         App::new(ACCOUNT)
@@ -140,6 +142,26 @@ mod account {
                             .required(true),
                     ),
             )
+            .subcommand(
+                App::new(GET)
+                    .about("Use this command to get existing Account information.")
+                    .arg(
+                        Arg::with_name(ACCOUNT_NAME)
+                            .long(ACCOUNT_NAME)
+                            .value_name(ACCOUNT_NAME)
+                            .help("Account's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true),
+                    )
+                    .arg(
+                        Arg::with_name(ACCOUNT_DOMAIN_NAME)
+                            .long(ACCOUNT_DOMAIN_NAME)
+                            .value_name(ACCOUNT_DOMAIN_NAME)
+                            .help("Account's Domain's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true),
+                    ),
+            )
     }
 
     pub fn process(matches: &ArgMatches<'_>) {
@@ -152,6 +174,15 @@ mod account {
                         println!("Creating account with a public key: {}", public_key);
                         create_account(account_name, domain_name, public_key);
                     }
+                }
+            }
+        }
+        if let Some(ref matches) = matches.subcommand_matches(GET) {
+            if let Some(account_name) = matches.value_of(ACCOUNT_NAME) {
+                println!("Getting account with a name: {}", account_name);
+                if let Some(domain_name) = matches.value_of(ACCOUNT_DOMAIN_NAME) {
+                    println!("Getting account with a domain's name: {}", domain_name);
+                    get_account(account_name, domain_name);
                 }
             }
         }
@@ -168,6 +199,19 @@ mod account {
         );
         executor::block_on(iroha_client.submit(create_account.into()))
             .expect("Failed to create account.");
+    }
+
+    fn get_account(account_name: &str, domain_name: &str) {
+        let mut iroha_client = Client::new(
+            &Configuration::from_path("config.json").expect("Failed to load configuration."),
+        );
+        let account_id = AccountId::new(account_name, domain_name);
+        let query_result =
+            executor::block_on(iroha_client.request(&query::GetAccount::build_request(account_id)))
+                .expect("Failed to get account information.");
+        if let QueryResult::GetAccount(result) = query_result {
+            println!("Get Account information result: {:#?}", result);
+        }
     }
 }
 
@@ -309,7 +353,7 @@ mod asset {
         ))
         .expect("Failed to get asset.");
         if let QueryResult::GetAccountAssets(result) = query_result {
-            println!("Get Asset result: {:?}", result);
+            println!("Get Asset result: {:#?}", result);
         }
     }
 }
@@ -482,7 +526,7 @@ mod dex {
                         }
                     }
                 }
-                if let Some(ref matches) = matches.subcommand_matches(LIST) {
+                if let Some(ref _matches) = matches.subcommand_matches(LIST) {
                     println!("Listing active Token Pairs in the domain: {}", domain_name);
                     list_token_pairs(domain_name)
                 }
@@ -502,7 +546,7 @@ mod dex {
             if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
                 if let Some(base_asset) = matches.value_of(BASE) {
                     if let Some(target_asset) = matches.value_of(TARGET) {
-                        if let Some(ref matches) = matches.subcommand_matches(CREATE) {
+                        if let Some(ref _matches) = matches.subcommand_matches(CREATE) {
                             println!(
                                 "Creating XYK Pool in the domain: {} with base: {} and target: {}",
                                 domain_name, base_asset, target_asset
@@ -532,6 +576,19 @@ mod dex {
                                         target_amount,
                                     );
                                 }
+                            }
+                        }
+                        if let Some(ref matches) = matches.subcommand_matches(REMOVE_LIQUIDITY) {
+                            println!(
+                                "Removing liquidity from XYK Pool in the domain: {} with base: {} and target: {}",
+                                domain_name, base_asset, target_asset
+                            );
+                            if let Some(liquidity) = matches.value_of(LIQUIDITY) {
+                                println!(
+                                    "Removing liquidity from XYK Pool for Token Pair with Liquidity Amount: {}",
+                                    liquidity
+                                );
+                                remove_liquidity(domain_name, base_asset, target_asset, liquidity);
                             }
                         }
                         if let Some(ref matches) = matches.subcommand_matches(ACTIVATE_ACCOUNT) {
@@ -575,7 +632,7 @@ mod dex {
         let query_result = executor::block_on(iroha_client.request(&GetDEXList::build_request()))
             .expect("Failed to list DEX.");
         if let QueryResult::GetDEXList(result) = query_result {
-            println!("Get DEX list result: {:?}", result);
+            println!("Get DEX list result: {:#?}", result);
         }
     }
 
@@ -588,7 +645,7 @@ mod dex {
         )))
         .expect("Failed to get DEX information.");
         if let QueryResult::GetDEX(result) = query_result {
-            println!("Get DEX infomation result: {:?}", result);
+            println!("Get DEX infomation result: {:#?}", result);
         }
     }
 
@@ -640,7 +697,7 @@ mod dex {
         ))
         .expect("Failed to list Token Pairs.");
         if let QueryResult::GetTokenPairList(result) = query_result {
-            println!("Get TokenPair list result: {:?}", result);
+            println!("Get TokenPair list result: {:#?}", result);
         }
     }
 
@@ -659,7 +716,7 @@ mod dex {
             executor::block_on(iroha_client.request(&GetTokenPair::build_request(token_pair_id)))
                 .expect("Failed to get Token Pair information.");
         if let QueryResult::GetTokenPair(result) = query_result {
-            println!("Get TokenPair information result: {:?}", result);
+            println!("Get TokenPair information result: {:#?}", result);
         }
     }
 
@@ -751,6 +808,21 @@ mod dex {
             .expect("Failed to parse Asset quantity for Liquidity.");
         let amount_a_min = 0u32;
         let amount_b_min = 0u32;
-        unimplemented!()
+        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
+        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let token_pair_id = TokenPairId::new(
+            DEXId::new(domain_name),
+            base_asset_definition_id,
+            target_asset_definition_id,
+        );
+        let liquidity_source_id =
+            LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
+        executor::block_on(iroha_client.submit(xyk_pool_remove_liquidity(
+            liquidity_source_id,
+            liquidity_quantity,
+            amount_a_min,
+            amount_b_min,
+        )))
+        .expect("Failed to remove liquidity from XYK Pool.");
     }
 }

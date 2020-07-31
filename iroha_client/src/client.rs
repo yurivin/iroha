@@ -22,7 +22,7 @@ impl Client {
             key_pair: KeyPair {
                 public_key: configuration.public_key.clone(),
                 private_key: configuration.private_key.clone(),
-            }, //KeyPair::generate().expect("Failed to generate KeyPair."),
+            },
             account_id: iroha::account::Id::new(
                 &configuration.account_name,
                 &configuration.domain_name,

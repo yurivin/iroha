@@ -78,7 +78,7 @@ fn impl_log(item: TokenStream) -> TokenStream {
             print!("{} {}[start]: ",
                 std::time::SystemTime::now().duration_since(
                     std::time::SystemTime::UNIX_EPOCH
-                    ).expect("SystemTime befor UNIX EPOCH.").as_millis(),
+                    ).expect("SystemTime before UNIX EPOCH.").as_millis(),
                 #ident_str,
             );
             #arguments
@@ -87,7 +87,7 @@ fn impl_log(item: TokenStream) -> TokenStream {
             println!("{} {}[end]: {:?}",
                 std::time::SystemTime::now().duration_since(
                     std::time::SystemTime::UNIX_EPOCH
-                    ).expect("SystemTime befor UNIX EPOCH.").as_millis(),
+                    ).expect("SystemTime before UNIX EPOCH.").as_millis(),
                 #ident_str,
                 &result
             );
