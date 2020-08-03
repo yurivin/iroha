@@ -2,7 +2,7 @@ use node_template_runtime::{
     genesis::{account_id_from_seed, dev_genesis, testnet_genesis},
     GenesisConfig,
 };
-use sp_core::{sr25519, crypto::AccountId32};
+use sp_core::{crypto::AccountId32, sr25519};
 
 // Note this is the URL for the telemetry server
 //const STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
@@ -27,6 +27,8 @@ pub fn dev_config() -> ChainSpec {
 
 /// Build a Local Chainspec
 pub fn local_testnet_config() -> ChainSpec {
+    println!("LOCAL TESTNET CONFIG");
+
     ChainSpec::from_genesis(
         "Local Testnet",
         "local_testnet",

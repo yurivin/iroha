@@ -14,22 +14,17 @@ use frame_support::{
 };
 use parity_scale_codec::{Decode, Encode};
 
+use alt_serde::{Deserialize, Deserializer};
+use frame_support::dispatch::Weight;
+use frame_support::traits::Currency;
+use frame_support::traits::ExistenceRequirement;
+use frame_system::offchain::{Account, SignMessage, SigningTypes};
 use frame_system::{
     self as system, ensure_none, ensure_signed,
     offchain::{
         AppCrypto, CreateSignedTransaction, SendSignedTransaction, Signer, SubmitTransaction,
     },
 };
-use sp_core::crypto::KeyTypeId;
-use sp_core::ed25519::Signature as SpSignature;
-use sp_runtime::{offchain as rt_offchain, offchain::storage::StorageValueRef, transaction_validity::{
-    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
-    ValidTransaction,
-}, MultiSignature};
-use sp_std::prelude::*;
-use sp_std::str;
-use alt_serde::{Deserialize, Deserializer};
-use frame_system::offchain::{Account, SignMessage, SigningTypes};
 use iroha_client_no_std::account;
 use iroha_client_no_std::account::isi::AccountInstruction;
 use iroha_client_no_std::asset::isi::AssetInstruction;
@@ -40,11 +35,22 @@ use iroha_client_no_std::isi::prelude::PeerInstruction;
 use iroha_client_no_std::peer::PeerId;
 use iroha_client_no_std::prelude::*;
 use iroha_client_no_std::tx::{Payload, RequestedTransaction};
+use sp_core::crypto::KeyTypeId;
+use sp_core::ed25519::Signature as SpSignature;
 use sp_runtime::offchain::http::Request;
 use sp_runtime::traits::{Hash, StaticLookup};
+use sp_runtime::{
+    offchain as rt_offchain,
+    offchain::storage::StorageValueRef,
+    transaction_validity::{
+        InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+        ValidTransaction,
+    },
+    MultiSignature,
+};
 use sp_std::convert::TryFrom;
-use frame_support::traits::ExistenceRequirement;
-use frame_support::traits::Currency;
+use sp_std::prelude::*;
+use sp_std::str;
 // use core::alloc::format;
 
 /// Defines application identifier for crypto keys of this module.
@@ -55,6 +61,7 @@ use frame_support::traits::Currency;
 /// `KeyTypeId` from the keystore and use the ones it finds to sign the transaction.
 /// The keys can be inserted manually via RPC (see `author_insertKey`).
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"demo");
+pub const KEY_TYPE_2: KeyTypeId = KeyTypeId(*b"dem0");
 pub const NUM_VEC_LEN: usize = 10;
 
 pub const INSTRUCTION_ENDPOINT: &[u8] = b"http://127.0.0.1:7878/instruction";
@@ -67,10 +74,12 @@ pub const HTTP_HEADER_USER_AGENT: &[u8] = b"jimmychu0807";
 /// the types with this pallet-specific identifier.
 pub mod crypto {
     use crate::KEY_TYPE;
-    use sp_core::ed25519::Signature as Ed25519Signature;
+    use sp_core::ecdsa::Signature as EcdsaSignature;
+    use sp_core::ed25519::{Public as EdPublic, Signature as Ed25519Signature};
     use sp_core::sr25519::Signature as Sr25519Signature;
+
     use sp_runtime::{
-        app_crypto::{app_crypto, sr25519},
+        app_crypto::{app_crypto, ecdsa, ed25519, sr25519},
         traits::Verify,
         MultiSignature, MultiSigner,
     };
@@ -78,6 +87,7 @@ pub mod crypto {
     app_crypto!(sr25519, KEY_TYPE);
 
     pub struct TestAuthId;
+
     // implemented for ocw-runtime
     impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
         type RuntimeAppPublic = Public;
@@ -86,12 +96,32 @@ pub mod crypto {
     }
 
     // implemented for mock runtime in test
-    impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
-        for TestAuthId
-    {
+    // impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
+    // for TestAuthId
+    // {
+    //     type RuntimeAppPublic = Public;
+    //     type GenericSignature = sp_core::sr25519::Signature;
+    //     type GenericPublic = sp_core::sr25519::Public;
+    // }
+}
+
+pub mod crypto_ed {
+    use crate::KEY_TYPE_2 as KEY_TYPE;
+    use sp_core::ed25519::{Public as EdPublic, Signature as Ed25519Signature};
+
+    use sp_runtime::{
+        app_crypto::{app_crypto, ed25519},
+        traits::Verify,
+        MultiSignature, MultiSigner,
+    };
+
+    app_crypto!(ed25519, KEY_TYPE);
+
+    pub struct TestAuthId;
+    impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
         type RuntimeAppPublic = Public;
-        type GenericSignature = sp_core::sr25519::Signature;
-        type GenericPublic = sp_core::sr25519::Public;
+        type GenericSignature = sp_core::ed25519::Signature;
+        type GenericPublic = sp_core::ed25519::Public;
     }
 }
 
@@ -99,6 +129,8 @@ pub mod crypto {
 pub trait Trait: system::Trait + collateral::Trait + CreateSignedTransaction<Call<Self>> {
     /// The identifier type for an offchain worker.
     type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+    /// The identifier type for an offchain worker Ed25519 keys.
+    type AuthorityIdEd: AppCrypto<Self::Public, Self::Signature>;
     /// The overarching dispatch call type.
     type Call: From<Call<Self>>;
     /// The overarching event type.
@@ -115,10 +147,25 @@ enum TransactionType {
     None,
 }
 
+/// The type of requests we can send to the offchain worker
+#[cfg_attr(feature = "std", derive(PartialEq, Eq, Debug))]
+#[derive(Encode, Decode)]
+pub enum OffchainRequest<T: system::Trait + collateral::Trait> {
+    Transfer(
+        collateral::BalanceOf<T>,
+        <T as system::Trait>::AccountId,
+        u8,
+    ),
+}
+
 decl_storage! {
     trait Store for Module<T: Trait> as Example {
         /// A vector of recently submitted numbers. Should be bounded
         Numbers get(fn numbers): Vec<u64>;
+        /// Requests made within this block execution
+        OcRequests get(fn oc_requests): Vec<OffchainRequest<T>>;
+        // The current set of keys that may submit pongs
+        // Authorities get(fn authorities) config(): Vec<T::AccountId>;
     }
 }
 
@@ -130,6 +177,7 @@ decl_event!(
     {
         /// Event generated when a new number is accepted to contribute to the average.
         NewNumber(Option<AccountId>, u64),
+        Ack(u8, AccountId),
     }
 );
 
@@ -150,12 +198,37 @@ decl_error! {
 use frame_system::RawOrigin;
 use sp_runtime::DispatchError;
 
-use sp_core::{ed25519, sr25519, crypto::AccountId32};
+use sp_core::{crypto::AccountId32, ed25519, sr25519};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
 decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         fn deposit_event() = default;
+
+        /// Clean the state on initialisation of a block
+        fn on_initialize(_now: T::BlockNumber) -> Weight {
+            // At the beginning of each block execution, system triggers all
+            // `on_initialize` functions, which allows us to set up some temporary state or - like
+            // in this case - clean up other states
+            <Self as Store>::OcRequests::kill();
+            0
+        }
+
+        /// Called from the offchain worker to respond to a ping
+        #[weight = 0]
+        pub fn pong(origin, nonce: u8) -> DispatchResult {
+            // We don't allow anyone to `pong` but only those authorised in the `authorities`
+            // set at this point. Therefore after ensuring this is signed, we check whether
+            // that given author is allowed to `pong` is. If so, we emit the `Ack` event,
+            // otherwise we've just consumed their fee.
+            let author = ensure_signed(origin)?;
+
+            // if Self::is_authority(&author) {
+            Self::deposit_event(RawEvent::Ack(nonce, author));
+            // }
+
+            Ok(())
+        }
 
         #[weight = 0]
         pub fn fetch_blocks_signed(origin) -> DispatchResult {
@@ -179,10 +252,24 @@ decl_module! {
         }
 
         #[weight = 0]
-        pub fn transfer(origin, receiver: T::AccountId, amount: collateral::BalanceOf::<T>) -> DispatchResult {
-            debug::info!("called transfer");
-            // let _ = ensure_signed(origin)?;
-            let sender = <<T as frame_system::Trait>::AccountId>::decode(&mut &([212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125])[..]).unwrap();
+        pub fn request_transfer(origin, receiver: T::AccountId, amount: collateral::BalanceOf::<T>, nonce: u8) -> DispatchResult {
+            debug::info!("called request_transfer");
+            let sender = ensure_signed(origin)?;
+            debug::info!("sender {:?}", sender);
+
+            <Self as Store>::OcRequests::mutate(|v| v.push(OffchainRequest::Transfer(amount, receiver, nonce)));
+
+            // let minted_tokens = T::XOR::issue(amount);
+            // T::XOR::resolve_creating(&requester, minted_tokens);
+            // Self::deposit_event(RawEvent::Mint(requester, amount));
+            // Self::deposit_event(RawEvent::Transfer(sender, receiver, amount));
+            Ok(())
+        }
+
+        #[weight = 0]
+        pub fn force_transfer(origin, sender: T::AccountId, receiver: T::AccountId, amount: collateral::BalanceOf::<T>) -> DispatchResult {
+            debug::info!("called force_transfer");
+            let _ = ensure_signed(origin)?;
             debug::info!("sender {:?}", sender);
 
             if let Err(e) = T::XOR::transfer(&sender, &receiver, amount, ExistenceRequirement::AllowDeath) {
@@ -198,6 +285,14 @@ decl_module! {
         }
 
         fn offchain_worker(block_number: T::BlockNumber) {
+            for e in <Self as Store>::OcRequests::get() {
+                match e {
+                    OffchainRequest::Transfer(amount, to, nonoce) => {
+                        let _ = Self::respond(amount, to, nonoce);
+                    }
+                }
+            }
+
             if block_number < T::BlockNumber::from(1) {
                 debug::info!("Entering off-chain workers");
                 match Self::fetch_blocks() {
@@ -362,8 +457,7 @@ impl<T: Trait> Module<T> {
             let bridge_account_id = AccountId::new("bridge", "polkadot");
             let root_account_id = AccountId::new("root", "global");
             let xor_asset_def = AssetDefinitionId::new("XOR", "global");
-            let xor_asset_id =
-                AssetId::new(xor_asset_def.clone(), root_account_id.clone());
+            let xor_asset_id = AssetId::new(xor_asset_def.clone(), root_account_id.clone());
             let dot_asset_def = AssetDefinitionId::new("DOT", "polkadot");
             let dot_asset_id = AssetId::new(dot_asset_def.clone(), bridge_account_id.clone());
             for isi in tx.payload.instructions {
@@ -373,7 +467,11 @@ impl<T: Trait> Module<T> {
                         to,
                         mut asset,
                     )) => {
-                        debug::info!("Outgoing {} transfer from {}", asset.id.definition_id.name, from);
+                        debug::info!(
+                            "Outgoing {} transfer from {}",
+                            asset.id.definition_id.name,
+                            from
+                        );
                         if to == bridge_account_id {
                             if asset.id.definition_id != xor_asset_def {
                                 continue;
@@ -381,7 +479,8 @@ impl<T: Trait> Module<T> {
                             use sp_core::crypto::AccountId32;
                             // TODO: create mapping or do a query for the user public key
                             if from == root_account_id {
-                                let amount = collateral::BalanceOf::<T>::from(asset.quantity * 1000);
+                                let amount =
+                                    collateral::BalanceOf::<T>::from(asset.quantity * 1000);
 
                                 let signer = Signer::<T, T::AuthorityId>::any_account();
                                 if !signer.can_sign() {
@@ -390,16 +489,29 @@ impl<T: Trait> Module<T> {
                                 }
 
                                 let result = signer.send_signed_transaction(move |acc| {
-                                    let receiver = <<T as frame_system::Trait>::AccountId>::decode(&mut &([52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120])[..]).unwrap();
+                                    let receiver = <<T as frame_system::Trait>::AccountId>::decode(
+                                        &mut &([
+                                            52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144,
+                                            70, 71, 206, 243, 67, 8, 115, 247, 189, 204, 26, 181,
+                                            226, 232, 81, 123, 12, 81, 120,
+                                        ])[..],
+                                    )
+                                    .unwrap();
                                     debug::info!("signer {:?}", acc.id);
                                     debug::info!("receiver {:?}", receiver);
 
-                                    let sender = <<T as frame_system::Trait>::AccountId>::decode(&mut &([212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125])[..]).unwrap();
+                                    let sender = <<T as frame_system::Trait>::AccountId>::decode(
+                                        &mut &([
+                                            212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189,
+                                            4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227,
+                                            154, 86, 132, 231, 165, 109, 162, 125,
+                                        ])[..],
+                                    )
+                                    .unwrap();
                                     debug::info!("sender {:?}", sender);
 
-                                    Call::transfer(receiver, amount)
+                                    Call::force_transfer(sender, receiver, amount)
                                 });
-
 
                                 match result {
                                     Some((acc, Ok(_))) => {
@@ -409,7 +521,11 @@ impl<T: Trait> Module<T> {
                                         );
                                     }
                                     Some((acc, Err(e))) => {
-                                        debug::error!("[{:?}] Failed in signed_submit_number: {:?}", acc.id, e);
+                                        debug::error!(
+                                            "[{:?}] Failed in signed_submit_number: {:?}",
+                                            acc.id,
+                                            e
+                                        );
                                         return Err(<Error<T>>::SignedSubmitNumberError);
                                     }
                                     _ => {
@@ -430,8 +546,8 @@ impl<T: Trait> Module<T> {
     fn fetch_blocks() -> Result<Vec<ValidBlock>, Error<T>> {
         let remote_url_bytes = BLOCK_ENDPOINT.to_vec();
         let user_agent = HTTP_HEADER_USER_AGENT.to_vec();
-        let remote_url = str::from_utf8(&remote_url_bytes)
-            .map_err(|_| <Error<T>>::HttpFetchingError)?;
+        let remote_url =
+            str::from_utf8(&remote_url_bytes).map_err(|_| <Error<T>>::HttpFetchingError)?;
         let latest_hash = [0; 32];
         let null_pk = PublicKey::try_from(vec![0u8; 32]).unwrap();
         let mut get_blocks = BlockMessage::GetBlocksAfter(latest_hash, PeerId::new("", &null_pk));
@@ -490,11 +606,7 @@ impl<T: Trait> Module<T> {
                 .map(iroha_sig_to_parity_sig::<T>)
             {
                 let block_hash = T::Hashing::hash(&block.header.encode());
-                if !T::AuthorityId::verify(
-                    block_hash.as_ref(),
-                    pk,
-                    sig,
-                ) {
+                if !T::AuthorityId::verify(block_hash.as_ref(), pk, sig) {
                     debug::error!("Invalid signature of block: {:?}", block_hash);
                     return Err(<Error<T>>::HttpFetchingError);
                 }
@@ -505,7 +617,7 @@ impl<T: Trait> Module<T> {
     }
 
     fn send_instructions(instructions: Vec<Instruction>) -> Result<Vec<u8>, Error<T>> {
-        let signer = Signer::<T, T::AuthorityId>::all_accounts();
+        let signer = Signer::<T, T::AuthorityIdEd>::all_accounts();
         if !signer.can_sign() {
             debug::error!("No local account available");
             return Err(<Error<T>>::SignedSubmitNumberError);
@@ -523,8 +635,11 @@ impl<T: Trait> Module<T> {
         let payload_encoded = requested_tx.payload.encode();
         let sigs = signer.sign_message(&payload_encoded);
         for (acc, sig) in sigs {
-            let sig = parity_sig_to_iroha_sig::<T>((acc.public, sig));
-            requested_tx.signatures.push(sig);
+            debug::info!("send_instructions acc [{}]: {:?}", acc.index, acc.public);
+            if acc.index == 0 {
+                let sig = parity_sig_to_iroha_sig::<T>((acc.public, sig));
+                requested_tx.signatures.push(sig);
+            }
         }
         let tx_encoded = requested_tx.encode();
         let request = rt_offchain::http::Request::post(remote_url, vec![tx_encoded]);
@@ -598,6 +713,89 @@ impl<T: Trait> Module<T> {
         }
 
         Ok(response.body().collect::<Vec<u8>>())
+    }
+
+    /// Responding to as the given account to a given nonce by calling `pong` as a
+    /// newly signed and submitted trasnaction
+    fn respond(
+        amount: collateral::BalanceOf<T>,
+        to: <T as system::Trait>::AccountId,
+        nonce: u8,
+    ) -> Result<(), Error<T>> {
+        debug::info!("Received transfer request");
+        // let call = Call::pong(nonce);
+
+        let signer = Signer::<T, T::AuthorityId>::all_accounts();
+        if !signer.can_sign() {
+            debug::error!("No local account available");
+            return Ok(());
+        }
+
+        let bridge_account_id = AccountId::new("bridge", "polkadot");
+        let root_account_id = AccountId::new("root", "global");
+        let xor_asset_def = AssetDefinitionId::new("XOR", "global");
+        let xor_asset_id = AssetId::new(xor_asset_def.clone(), bridge_account_id.clone());
+        let x: u32 = amount
+            .try_into()
+            .map_err(|_| ())
+            .unwrap()
+            .try_into()
+            .map_err(|_| ())
+            .unwrap();
+        let amount = x / 1000u32;
+        let asset = Asset::with_quantity(xor_asset_id.clone(), amount);
+
+        let instructions = vec![Instruction::Account(AccountInstruction::TransferAsset(
+            bridge_account_id.clone(),
+            root_account_id.clone(),
+            asset,
+        ))];
+        let resp = Self::send_instructions(instructions)?;
+        if !resp.is_empty() {
+            debug::error!("error while processing transaction");
+        }
+        // let assets_query = GetAccountAssets::build_request(to);
+        // let query_result = QueryResult::decode(&mut Self::send_query(assets_query)?.as_slice()).map_err(|_| <Error<T>>::HttpFetchingError)?;
+        // debug::error!("query result: {:?}", query_result);
+        // .with_filter()
+        let result = signer.send_signed_transaction(move |acc| {
+            debug::info!("respond acc [{}]: {:?}", acc.index, acc.public);
+
+            let receiver = <<T as frame_system::Trait>::AccountId>::decode(
+                &mut &([
+                    52, 45, 84, 67, 137, 84, 47, 252, 35, 59, 237, 44, 144, 70, 71, 206, 243, 67,
+                    8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120,
+                ])[..],
+            )
+            .unwrap();
+            debug::info!("signer {:?}", acc.id);
+            debug::info!("receiver {:?}", receiver);
+
+            let sender = <<T as frame_system::Trait>::AccountId>::decode(
+                &mut &([
+                    212u8, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130,
+                    44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125,
+                ])[..],
+            )
+            .unwrap();
+            debug::info!("sender {:?}", sender);
+
+            Call::pong(nonce)
+            // Call::force_transfer(sender, receiver, amount)
+        });
+
+        // match result {
+        //     Some((acc, Ok(_))) => {
+        //         debug::native::info!("off-chain send_signed: acc: {:?}", acc.id);
+        //     }
+        //     Some((acc, Err(e))) => {
+        //         debug::error!("[{:?}] Failed in signed_submit_number: {:?}", acc.id, e);
+        //     }
+        //     _ => {
+        //         debug::error!("Failed in signed_submit_number");
+        //     }
+        // };
+        Ok(())
     }
 
     /*

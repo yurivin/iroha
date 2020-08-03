@@ -71,20 +71,23 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
     let service = builder.build_full()?;
 
     // Initialize seed for signing transaction using off-chain workers
-    // #[cfg(feature = "ocw")]
-    {
-        if let Some(seed) = dev_seed {
-            use sp_core::sr25519::Pair;
-            // println!("{:?}", Pair::from_string_with_seed(&seed, None).unwrap().0.encode());
-            service
-					.keystore()
-					.write()
-					.insert_ephemeral_from_seed_by_type::<node_template_runtime::template::crypto::Pair>(
-						&seed,
-						node_template_runtime::template::KEY_TYPE,
-					)
-					.expect("Dev Seed should always succeed.");
-        }
+    if let Some(seed) = dev_seed {
+        service
+            .keystore()
+            .write()
+            .insert_ephemeral_from_seed_by_type::<node_template_runtime::template::crypto::Pair>(
+                &seed,
+                node_template_runtime::template::KEY_TYPE,
+            )
+            .expect("Dev Seed should always succeed.");
+        service
+            .keystore()
+            .write()
+            .insert_ephemeral_from_seed_by_type::<node_template_runtime::template::crypto_ed::Pair>(
+                &seed,
+                node_template_runtime::template::KEY_TYPE_2,
+            )
+            .expect("Dev Seed should always succeed.");
     }
 
     if is_authority {
