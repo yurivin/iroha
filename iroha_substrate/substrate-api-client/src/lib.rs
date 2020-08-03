@@ -436,7 +436,7 @@ where
             XtStatus::InBlock => {
                 rpc::send_extrinsic_and_wait_until_in_block(self.url.clone(), jsonreq, result_in);
                 let res = result_out.recv().unwrap();
-                info!("inBlock: {}", res);
+                println!("inBlock: {}", res);
                 Ok(Some(hexstr_to_hash(res).unwrap()))
             }
             XtStatus::Broadcast => {

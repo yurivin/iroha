@@ -11,6 +11,8 @@ codec = { package = "parity-scale-codec", features = ["derive"], version = "1.0.
 iroha_client = { path = "../../iroha_client" }
 iroha = { path = "../../iroha" }
 async-std = { version = "1.5", features = ["attributes"] }
+schnorrkel = "0.9.1"
+ed25519-dalek = "1.0.0-pre.3"
 
 [dependencies.sp-runtime]
 git = 'https://github.com/paritytech/substrate.git'

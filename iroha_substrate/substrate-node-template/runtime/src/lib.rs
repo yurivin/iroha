@@ -237,6 +237,7 @@ parameter_types! {
 
 impl template::Trait for Runtime {
     type AuthorityId = template::crypto::TestAuthId;
+    type AuthorityIdEd = template::crypto_ed::TestAuthId;
     type Call = Call;
     type Event = Event;
     type UnsignedPriority = UnsignedPriority;
