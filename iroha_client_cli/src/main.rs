@@ -659,7 +659,7 @@ mod dex {
         executor::block_on(
             iroha_client.submit(
                 isi::Add {
-                    object: TokenPair::new(dex_id.clone(), base_asset_id, target_asset_id, 0, 0),
+                    object: TokenPair::new(dex_id.clone(), base_asset_id, target_asset_id),
                     destination_id: dex_id,
                 }
                 .into(),

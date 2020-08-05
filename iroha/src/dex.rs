@@ -7,6 +7,7 @@ use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
 use std::cmp;
 use std::collections::BTreeMap;
+use std::mem;
 
 const PSWAP_ASSET_NAME: &str = "PSWAP";
 const STORAGE_ACCOUNT_NAME: &str = "STORE";
@@ -98,10 +99,6 @@ impl TokenPairId {
 pub struct TokenPair {
     /// An Identification of the `TokenPair`, holds pair of token Ids.
     pub id: <TokenPair as Identifiable>::Id,
-    /// Precision of the exchange rate, measured in a number of decimal places.
-    pub precision: u8,
-    /// Fraction of price by which it can change.
-    pub price_step: u32,
     /// Liquidity Sources belonging to this TokenPair. At most one instance
     /// of each type.
     pub liquidity_sources: BTreeMap<<LiquiditySource as Identifiable>::Id, LiquiditySource>,
@@ -117,13 +114,9 @@ impl TokenPair {
         dex_id: <DEX as Identifiable>::Id,
         base_asset: <AssetDefinition as Identifiable>::Id,
         target_asset: <AssetDefinition as Identifiable>::Id,
-        precision: u8,
-        price_step: u32,
     ) -> Self {
         TokenPair {
             id: TokenPairId::new(dex_id, base_asset, target_asset),
-            precision,
-            price_step,
             liquidity_sources: BTreeMap::new(),
         }
     }
@@ -155,10 +148,73 @@ impl LiquiditySourceId {
 /// Enumration representing types of liquidity sources.
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub enum LiquiditySourceType {
-    /// X*Y=K liquidity pool.
+    /// X*Y=K model liquidity pool.
     XYKPool,
     /// Regular order book.
     OrderBook,
+}
+
+/// Data storage for XYK liquidity source.
+#[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
+pub struct XYKPoolData {
+    /// Asset definition of liquidity token belongin to given pool.
+    pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    /// Account that is used to store exchanged tokens, i.e. actual liquidity.
+    storage_account_id: <Account as Identifiable>::Id,
+    /// Account that will receive 1/6 fee cut if enabled.
+    fee_to: Option<<Account as Identifiable>::Id>,
+    /// Amount of active liquidity tokens.
+    pswap_total_supply: u32,
+    /// Amount of base tokens in the pool (currently stored in storage account).
+    base_asset_reserve: u32,
+    /// Amount of target tokens in the pool (currently stored in storage account).
+    target_asset_reserve: u32,
+    /// K (constant product) value, updated by latest liquidity operation.
+    k_last: u32,
+    // TODO: implement oracle-related features:
+    // /// Block timestamp
+    // last_block_timestamp: Time
+    // /// Cumulative price last for base token
+    // cumulative_price_target_to_base: u32,
+    // /// Cumulative price last for target token
+    // cumulative_price_base_to_target: u32,
+}
+
+impl XYKPoolData {
+    /// Default constructor for XYK Pool Data entity.
+    pub fn new(
+        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        storage_account_id: <Account as Identifiable>::Id,
+    ) -> Self {
+        XYKPoolData {
+            pswap_asset_definition_id,
+            storage_account_id,
+            fee_to: None,
+            pswap_total_supply: 0,
+            base_asset_reserve: 0,
+            target_asset_reserve: 0,
+            k_last: 0,
+        }
+    }
+}
+
+/// Try to unwrap reference `XYKPoolData` from `LiquiditySourceData` enum of `LiquiditySource` entity.
+
+pub fn expect_xyk_pool_data(liquidity_source: &LiquiditySource) -> Result<&XYKPoolData, String> {
+    match &liquidity_source.data {
+        LiquiditySourceData::XYKPool(data) => Ok(data),
+        _ => Err("wrong liquidity source data".to_owned()),
+    }
+}
+
+/// Try to unwrap mutable reference `XYKPoolData` from `LiquiditySourceData` enum of `LiquiditySource` entity.
+pub fn expect_xyk_pool_data_mut(
+    liquidity_source: &mut LiquiditySource,
+) -> Result<&mut XYKPoolData, String> {
+    match &mut liquidity_source.data {
+        LiquiditySourceData::XYKPool(data) => Ok(data),
+        _ => Err("wrong liquidity source data".to_owned()),
+    }
 }
 
 /// `LiquiditySource` represents an exchange pair between two assets in a domain. Assets are
@@ -166,20 +222,7 @@ pub enum LiquiditySourceType {
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub enum LiquiditySourceData {
     /// Data representing state of the XYK liquidity pool.
-    XYKPool {
-        /// Asset definition of liquidity token belongin to given pool.
-        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
-        /// Account that is used to store exchanged tokens, i.e. actual liquidity.
-        storage_account_id: <Account as Identifiable>::Id,
-        /// Amount of active liquidity tokens.
-        pswap_total_supply: u32,
-        /// Amount of base tokens in the pool (currently stored in storage account).
-        base_asset_amount: u32,
-        /// Amount of target tokens in the pool (currently stored in storage account).
-        target_asset_amount: u32,
-        /// K (constant product) value, updated by latest liquidity operation.
-        k_last: u32,
-    },
+    XYKPool(XYKPoolData),
     /// Data representing state of the Order Book.
     OrderBook, // this option currently is to prevent `irrefutable if-let pattern` warning
 }
@@ -205,17 +248,25 @@ impl LiquiditySource {
         pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
         storage_account_id: <Account as Identifiable>::Id,
     ) -> Self {
-        let data = LiquiditySourceData::XYKPool {
+        let data = LiquiditySourceData::XYKPool(XYKPoolData::new(
             pswap_asset_definition_id,
             storage_account_id,
-            pswap_total_supply: 0,
-            base_asset_amount: 0,
-            target_asset_amount: 0,
-            k_last: 0,
-        };
+        ));
         let id = LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
         LiquiditySource { id, data }
     }
+}
+
+fn xyk_pool_pswap_asset_name(token_pair_id: &<TokenPair as Identifiable>::Id) -> String {
+    format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol())
+}
+
+fn xyk_pool_storage_account_name(token_pair_id: &<TokenPair as Identifiable>::Id) -> String {
+    format!(
+        "{} XYK {}",
+        STORAGE_ACCOUNT_NAME,
+        token_pair_id.get_symbol()
+    )
 }
 
 /// Iroha Special Instructions module provides helper-methods for `Peer` for operating DEX,
@@ -375,7 +426,7 @@ pub mod isi {
     ) -> Add<DEX, TokenPair> {
         let dex_id = DEXId::new(domain_name);
         Add {
-            object: TokenPair::new(dex_id.clone(), base_asset, target_asset, 0, 0),
+            object: TokenPair::new(dex_id.clone(), base_asset, target_asset),
             destination_id: dex_id,
         }
     }
@@ -490,14 +541,10 @@ pub mod isi {
     /// Add new XYK Liquidity Pool for DEX with given `TokenPair`.
     pub fn create_xyk_pool(token_pair_id: <TokenPair as Identifiable>::Id) -> Instruction {
         let domain_name = token_pair_id.dex_id.domain_name.clone();
-        let asset_name = format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol());
+        let asset_name = xyk_pool_pswap_asset_name(&token_pair_id);
         let pswap_asset_definition =
             AssetDefinition::new(AssetDefinitionId::new(&asset_name, &domain_name));
-        let account_name = format!(
-            "{} XYK {}",
-            STORAGE_ACCOUNT_NAME,
-            token_pair_id.get_symbol()
-        );
+        let account_name = xyk_pool_storage_account_name(&token_pair_id);
         let storage_account = Account::new(&account_name, &domain_name);
         Instruction::If(
             Box::new(Instruction::ExecuteQuery(IrohaQuery::GetTokenPair(
@@ -610,77 +657,46 @@ pub mod isi {
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
         let liquidity_source = get_liquidity_source(&liquidity_source_id, world_state_view)?;
-        let token_pair_id = &liquidity_source_id.token_pair_id;
-
-        // TODO: consider wrapping data into struct contained in enum
-        if let LiquiditySourceData::XYKPool {
-            pswap_asset_definition_id,
-            storage_account_id,
-            pswap_total_supply,
-            base_asset_amount,
-            target_asset_amount,
-            k_last,
-        } = liquidity_source.data.clone()
-        {
-            let reserve_a = base_asset_amount;
-            let reserve_b = target_asset_amount;
-            // calculate appropriate deposit quantities to preserve pool proportions
-            let (amount_a, amount_b) = xyk_pool_get_optimal_deposit_amounts(
-                reserve_a.clone(),
-                reserve_b.clone(),
-                amount_a_desired,
-                amount_b_desired,
-                amount_a_min,
-                amount_b_min,
-            )?;
-            // deposit tokens into the storage account
-            transfer_from(
-                token_pair_id.base_asset.clone(),
-                authority.clone(),
-                storage_account_id.clone(),
-                amount_a.clone(),
-                authority.clone(),
-                world_state_view,
-            )?;
-            transfer_from(
-                token_pair_id.target_asset.clone(),
-                authority.clone(),
-                storage_account_id.clone(),
-                amount_b.clone(),
-                authority.clone(),
-                world_state_view,
-            )?;
-            // mint pswap for sender based on deposited amount
-            let (reserve_a, reserve_b, k, total_supply) = mint_pswap_with_fee(
-                pswap_asset_definition_id.clone(),
-                to,
-                amount_a,
-                amount_b,
-                reserve_a,
-                reserve_b,
-                k_last,
-                None,
-                pswap_total_supply,
-                world_state_view,
-            )?;
-            // update state of the pool
-            if let LiquiditySourceData::XYKPool {
-                pswap_total_supply,
-                base_asset_amount,
-                target_asset_amount,
-                k_last,
-                ..
-            } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
-            {
-                *pswap_total_supply = total_supply;
-                *base_asset_amount = reserve_a;
-                *target_asset_amount = reserve_b;
-                *k_last = k;
-            };
-            Ok(())
-        } else {
-            Err("wrong liquidity source: adding liquidity to xyk pool".to_owned())
-        }
+        let mut data = expect_xyk_pool_data(liquidity_source)?.clone();
+        // calculate appropriate deposit quantities to preserve pool proportions
+        let (amount_a, amount_b) = xyk_pool_get_optimal_deposit_amounts(
+            data.base_asset_reserve.clone(),
+            data.target_asset_reserve.clone(),
+            amount_a_desired,
+            amount_b_desired,
+            amount_a_min,
+            amount_b_min,
+        )?;
+        // deposit tokens into the storage account
+        transfer_from(
+            liquidity_source_id.token_pair_id.base_asset.clone(),
+            authority.clone(),
+            data.storage_account_id.clone(),
+            amount_a.clone(),
+            authority.clone(),
+            world_state_view,
+        )?;
+        transfer_from(
+            liquidity_source_id.token_pair_id.target_asset.clone(),
+            authority.clone(),
+            data.storage_account_id.clone(),
+            amount_b.clone(),
+            authority.clone(),
+            world_state_view,
+        )?;
+        // mint pswap for sender based on deposited amount
+        xyk_pool_mint_pswap_with_fee(
+            to,
+            liquidity_source_id.token_pair_id.clone(),
+            amount_a,
+            amount_b,
+            world_state_view,
+            &mut data,
+        )?;
+        // update pool data
+        let liquidity_source = get_liquidity_source_mut(&liquidity_source_id, world_state_view)?;
+        mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
+        Ok(())
     }
 
     /// Based on given reserves, desired and minimal amounts to add liquidity, either return
@@ -745,115 +761,88 @@ pub mod isi {
     }
 
     /// Mint pswap tokens representing liquidity in pool for depositing account.
-    /// returns (reserve_a, reserve_b, k_last, total_supply)
-    fn mint_pswap_with_fee(
-        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    fn xyk_pool_mint_pswap_with_fee(
         to: <Account as Identifiable>::Id,
+        token_pair_id: <TokenPair as Identifiable>::Id,
         amount_a: u32,
         amount_b: u32,
-        mut reserve_a: u32,
-        mut reserve_b: u32,
-        k_last: u32,
-        fee_to: Option<<Account as Identifiable>::Id>,
-        total_supply: u32,
         world_state_view: &mut WorldStateView,
-    ) -> Result<(u32, u32, u32, u32), String> {
-        let (mut k_last, total_supply) = mint_pswap_fee(
-            pswap_asset_definition_id.clone(),
-            reserve_a.clone(),
-            reserve_b.clone(),
-            k_last.clone(),
-            fee_to.clone(),
-            total_supply.clone(),
+        data: &mut XYKPoolData,
+    ) -> Result<(), String> {
+        let balance_a = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.base_asset.clone(),
+            world_state_view,
+        )?;
+        let balance_b = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.target_asset.clone(),
             world_state_view,
         )?;
 
+        xyk_pool_mint_pswap_fee(world_state_view, data)?;
+
         let liquidity;
-        let total_supply = if total_supply == 0u32 {
+        if data.pswap_total_supply == 0u32 {
             liquidity = (amount_a * amount_b).integer_sqrt() - MINIMUM_LIQUIDITY;
-            //TODO: does minimum liquidity need to be locked?
             // mint (address(0), MINIMUM_LIQUIDITY), equivalent to just raising total_supply:
-            MINIMUM_LIQUIDITY
+            data.pswap_total_supply = MINIMUM_LIQUIDITY;
         } else {
             liquidity = cmp::min(
-                (amount_a * total_supply) / reserve_a,
-                (amount_b * total_supply) / reserve_b,
+                (amount_a * data.pswap_total_supply) / data.base_asset_reserve,
+                (amount_b * data.pswap_total_supply) / data.target_asset_reserve,
             );
-            total_supply
         };
         if !(liquidity > 0u32) {
             return Err("insufficient liquidity minted".to_owned());
         }
-        let total_supply = mint_pswap(
-            pswap_asset_definition_id,
-            to,
-            liquidity,
-            total_supply,
-            world_state_view,
-        )?;
-
-        reserve_a += amount_a;
-        reserve_b += amount_b;
-
-        if fee_to.is_some() {
-            k_last = reserve_a * reserve_b;
+        xyk_pool_mint_pswap(to, liquidity, world_state_view, data)?;
+        xyk_pool_update(balance_a, balance_b, world_state_view, data)?;
+        if data.fee_to.is_some() {
+            data.k_last = data.base_asset_reserve * data.target_asset_reserve;
         }
-        Ok((reserve_a, reserve_b, k_last, total_supply))
+        Ok(())
     }
 
-    /// returns (k_last, total_supply)
-    fn mint_pswap_fee(
-        asset_definition_id: <AssetDefinition as Identifiable>::Id,
-        reserve_a: u32,
-        reserve_b: u32,
-        k_last: u32,
-        fee_to: Option<<Account as Identifiable>::Id>,
-        mut total_supply: u32,
+    fn xyk_pool_mint_pswap_fee(
         world_state_view: &mut WorldStateView,
-    ) -> Result<(u32, u32), String> {
-        if let Some(fee_to) = fee_to {
-            if k_last != 0u32 {
-                let root_k = (reserve_a * reserve_b).integer_sqrt();
-                let root_k_last = k_last.integer_sqrt();
+        data: &mut XYKPoolData,
+    ) -> Result<(), String> {
+        if let Some(fee_to) = data.fee_to.clone() {
+            if data.k_last != 0u32 {
+                let root_k = (data.base_asset_reserve * data.target_asset_reserve).integer_sqrt();
+                let root_k_last = data.k_last.integer_sqrt();
                 if root_k > root_k_last {
-                    let numerator = total_supply * (root_k - root_k_last);
+                    let numerator = data.pswap_total_supply * (root_k - root_k_last);
                     let demonimator = 5 * root_k + root_k_last;
                     let liquidity = numerator / demonimator;
                     if liquidity > 0u32 {
-                        total_supply = mint_pswap(
-                            asset_definition_id,
-                            fee_to,
-                            liquidity,
-                            total_supply.clone(),
-                            world_state_view,
-                        )?;
+                        xyk_pool_mint_pswap(fee_to, liquidity, world_state_view, data)?;
                     }
                 }
             }
-        } else if k_last != 0u32 {
-            return Ok((0u32, total_supply));
+        } else if data.k_last != 0u32 {
+            data.k_last = 0u32;
         }
-        Ok((k_last, total_supply))
+        Ok(())
     }
 
-    /// returns (total_supply)
-    fn mint_pswap(
-        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    fn xyk_pool_mint_pswap(
         to: <Account as Identifiable>::Id,
-        value: u32,
-        total_supply: u32,
+        quantity: u32,
         world_state_view: &mut WorldStateView,
-    ) -> Result<u32, String> {
-        let asset_id = AssetId::new(asset_definition_id, to);
-        mint_asset_unchecked(asset_id, value, world_state_view)?;
-        Ok(total_supply + value)
+        data: &mut XYKPoolData,
+    ) -> Result<(), String> {
+        let asset_id = AssetId::new(data.pswap_asset_definition_id.clone(), to);
+        mint_asset_unchecked(asset_id, quantity, world_state_view)?;
+        data.pswap_total_supply += quantity;
+        Ok(())
     }
 
     /// Low-level function, should be called from function which performs important safety checks.
     fn mint_asset_unchecked(
         asset_id: <Asset as Identifiable>::Id,
         quantity: u32,
-        //authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
         world_state_view
@@ -865,6 +854,47 @@ pub mod isi {
             }
             None => world_state_view.add_asset(Asset::with_quantity(asset_id.clone(), quantity)),
         }
+        Ok(())
+    }
+
+    /// Get balance of token for specified account.
+    fn get_asset_quantity(
+        account_id: <Account as Identifiable>::Id,
+        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        world_state_view: &WorldStateView,
+    ) -> Result<u32, String> {
+        let asset_id = AssetId::new(asset_definition_id, account_id.clone());
+        Ok(world_state_view
+            .read_account(&account_id)
+            .ok_or("account not found")?
+            .assets
+            .get(&asset_id)
+            .ok_or("asset not found")?
+            .quantity)
+    }
+
+    /// Update reserves records up to actual token balance.
+    fn xyk_pool_update(
+        balance_a: u32,
+        balance_b: u32,
+        _world_state_view: &mut WorldStateView,
+        data: &mut XYKPoolData,
+    ) -> Result<(), String> {
+        data.base_asset_reserve = balance_a;
+        data.target_asset_reserve = balance_b;
+
+        // TODO: implement updates for oracle functionality:
+        // require(balance0 <= uint112(-1) && balance1 <= uint112(-1), 'UniswapV2: OVERFLOW');
+        // uint32 blockTimestamp = uint32(block.timestamp % 2**32);
+        // uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
+        // if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
+        //     // * never overflows, and + overflow is desired
+        //     price0CumulativeLast += uint(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
+        //     price1CumulativeLast += uint(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
+        // }
+        // reserve0 = uint112(balance0);
+        // reserve1 = uint112(balance1);
+        // blockTimestampLast = blockTimestamp;
         Ok(())
     }
 
@@ -901,152 +931,116 @@ pub mod isi {
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
         let liquidity_source = get_liquidity_source(&liquidity_source_id, world_state_view)?;
-        let token_pair_id = &liquidity_source_id.token_pair_id;
-        let asset_a_definition_id = token_pair_id.base_asset.clone();
-        let asset_b_definition_id = token_pair_id.target_asset.clone();
+        let mut data = expect_xyk_pool_data(liquidity_source)?.clone();
 
-        if let LiquiditySourceData::XYKPool {
-            pswap_asset_definition_id,
-            storage_account_id,
-            pswap_total_supply,
-            base_asset_amount,
-            target_asset_amount,
-            k_last,
-        } = liquidity_source.data.clone()
-        {
-            let reserve_a = base_asset_amount;
-            let reserve_b = target_asset_amount;
-
-            transfer_from(
-                pswap_asset_definition_id.clone(),
-                authority.clone(),
-                storage_account_id.clone(),
-                liquidity,
-                authority.clone(),
-                world_state_view,
-            )?;
-
-            let (amount_a, amount_b, reserve_a, reserve_b, k, total_supply) = burn_pswap_with_fee(
-                pswap_asset_definition_id.clone(),
-                asset_a_definition_id,
-                asset_b_definition_id,
-                storage_account_id.clone(),
-                to.clone(),
-                liquidity,
-                reserve_a,
-                reserve_b,
-                k_last,
-                None,
-                pswap_total_supply,
-                world_state_view,
-            )?;
-            if !(amount_a >= amount_a_min) {
-                return Err("insufficient a amount".to_owned());
-            }
-            if !(amount_b >= amount_b_min) {
-                return Err("insufficient b amount".to_owned());
-            }
-            // update state of the pool
-            if let LiquiditySourceData::XYKPool {
-                pswap_total_supply,
-                base_asset_amount,
-                target_asset_amount,
-                k_last,
-                ..
-            } = &mut get_liquidity_source_mut(&liquidity_source_id, world_state_view)?.data
-            {
-                *pswap_total_supply = total_supply;
-                *base_asset_amount = reserve_a;
-                *target_asset_amount = reserve_b;
-                *k_last = k;
-            };
-            Ok(())
-        } else {
-            Err("Wrong liquidity source: removing liquidity from xyk pool".to_owned())
-        }
-    }
-
-    // returns (amount_a, amount_b, reserve_a, reserve_b, k_last, total_supply)
-    fn burn_pswap_with_fee(
-        pswap_asset_definition_id: <AssetDefinition as Identifiable>::Id,
-        asset_a_definition_id: <AssetDefinition as Identifiable>::Id,
-        asset_b_definition_id: <AssetDefinition as Identifiable>::Id,
-        storage_account_id: <Account as Identifiable>::Id,
-        to: <Account as Identifiable>::Id,
-        liquidity: u32,
-        mut reserve_a: u32,
-        mut reserve_b: u32,
-        k_last: u32,
-        fee_to: Option<<Account as Identifiable>::Id>,
-        total_supply: u32,
-        world_state_view: &mut WorldStateView,
-    ) -> Result<(u32, u32, u32, u32, u32, u32), String> {
-        let (mut k_last, total_supply) = mint_pswap_fee(
-            pswap_asset_definition_id.clone(),
-            reserve_a,
-            reserve_b,
-            k_last,
-            fee_to.clone(),
-            total_supply,
+        transfer_from(
+            data.pswap_asset_definition_id.clone(),
+            authority.clone(),
+            data.storage_account_id.clone(),
+            liquidity,
+            authority.clone(),
             world_state_view,
         )?;
 
-        let amount_a = liquidity * reserve_a / total_supply;
-        let amount_b = liquidity * reserve_b / total_supply;
+        let (amount_a, amount_b) = xyk_pool_burn_pswap_with_fee(
+            to.clone(),
+            liquidity_source_id.token_pair_id.clone(),
+            liquidity,
+            world_state_view,
+            &mut data,
+        )?;
+        if !(amount_a >= amount_a_min) {
+            return Err("insufficient a amount".to_owned());
+        }
+        if !(amount_b >= amount_b_min) {
+            return Err("insufficient b amount".to_owned());
+        }
+        let liquidity_source = get_liquidity_source_mut(&liquidity_source_id, world_state_view)?;
+        mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
+
+        Ok(())
+    }
+
+    // returns (amount_a, amount_b)
+    fn xyk_pool_burn_pswap_with_fee(
+        to: <Account as Identifiable>::Id,
+        token_pair_id: <TokenPair as Identifiable>::Id,
+        liquidity: u32,
+        world_state_view: &mut WorldStateView,
+        data: &mut XYKPoolData,
+    ) -> Result<(u32, u32), String> {
+        let balance_a = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.base_asset.clone(),
+            world_state_view,
+        )?;
+        let balance_b = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.target_asset.clone(),
+            world_state_view,
+        )?;
+
+        xyk_pool_mint_pswap_fee(world_state_view, data)?;
+
+        let amount_a = liquidity * balance_a / data.pswap_total_supply;
+        let amount_b = liquidity * balance_b / data.pswap_total_supply;
         if !(amount_a > 0 && amount_b > 0) {
             return Err("insufficient liqudity burned".to_owned());
         }
-        let total_supply = burn_pswap(
-            pswap_asset_definition_id.clone(),
-            storage_account_id.clone(),
+        xyk_pool_burn_pswap(
+            data.storage_account_id.clone(),
             liquidity,
-            total_supply,
             world_state_view,
+            data,
         )?;
         transfer_from_unchecked(
-            asset_a_definition_id.clone(),
-            storage_account_id.clone(),
+            token_pair_id.base_asset.clone(),
+            data.storage_account_id.clone(),
             to.clone(),
             amount_a,
             world_state_view,
         )?;
         transfer_from_unchecked(
-            asset_b_definition_id.clone(),
-            storage_account_id.clone(),
+            token_pair_id.target_asset.clone(),
+            data.storage_account_id.clone(),
             to.clone(),
             amount_b,
             world_state_view,
         )?;
-        reserve_a -= amount_a;
-        reserve_b -= amount_b;
-        if !(reserve_a > 0 && reserve_b > 0) {
+        // update balances after transfers
+        let balance_a = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.base_asset.clone(),
+            world_state_view,
+        )?;
+        let balance_b = get_asset_quantity(
+            data.storage_account_id.clone(),
+            token_pair_id.target_asset.clone(),
+            world_state_view,
+        )?;
+
+        xyk_pool_update(balance_a, balance_b, world_state_view, data)?;
+
+        if !(data.base_asset_reserve > 0 && data.target_asset_reserve > 0) {
             // TODO: this check is not present in original contract, consider if it's needed
             return Err("Insufficient reserves.".to_string());
         }
-        if fee_to.is_some() {
-            k_last = reserve_a * reserve_b;
+        if data.fee_to.is_some() {
+            data.k_last = data.base_asset_reserve * data.target_asset_reserve;
         }
-        Ok((
-            amount_a,
-            amount_b,
-            reserve_a,
-            reserve_b,
-            k_last,
-            total_supply,
-        ))
+        Ok((amount_a, amount_b))
     }
 
-    /// returns (total_supply)
-    fn burn_pswap(
-        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    fn xyk_pool_burn_pswap(
         from: <Account as Identifiable>::Id,
         value: u32,
-        total_supply: u32,
         world_state_view: &mut WorldStateView,
-    ) -> Result<u32, String> {
-        let asset_id = AssetId::new(asset_definition_id, from);
+        data: &mut XYKPoolData,
+    ) -> Result<(), String> {
+        let asset_id = AssetId::new(data.pswap_asset_definition_id.clone(), from);
         burn_asset_unchecked(asset_id, value, world_state_view)?;
-        Ok(total_supply - value)
+        data.pswap_total_supply -= value;
+        Ok(())
     }
 
     /// Low-level function, should be called from function which performs important safety checks.
@@ -1137,36 +1131,32 @@ pub mod isi {
                 };
                 let liquidity_source =
                     get_liquidity_source(&liquidity_source_id, world_state_view)?;
-                if let LiquiditySourceData::XYKPool {
-                    pswap_asset_definition_id,
-                    ..
-                } = &liquidity_source.data
-                {
-                    let asset = Asset::with_permissions(
-                        asset_id.clone(),
-                        &[
-                            Permission::TransferAsset(
-                                None,
-                                Some(liquidity_source_id.token_pair_id.base_asset.clone()),
-                            ),
-                            Permission::TransferAsset(
-                                None,
-                                Some(liquidity_source_id.token_pair_id.target_asset.clone()),
-                            ),
-                            Permission::TransferAsset(
-                                None,
-                                Some(pswap_asset_definition_id.clone()),
-                            ),
-                        ],
-                    );
-                    let domain = get_domain_mut(&domain_name, world_state_view)?;
-                    domain
-                        .accounts
-                        .get_mut(&account_id)
-                        .ok_or("failed to find account")?
-                        .assets
-                        .insert(asset_id, asset);
-                }
+                let data = expect_xyk_pool_data(liquidity_source)?;
+
+                let asset = Asset::with_permissions(
+                    asset_id.clone(),
+                    &[
+                        Permission::TransferAsset(
+                            None,
+                            Some(liquidity_source_id.token_pair_id.base_asset.clone()),
+                        ),
+                        Permission::TransferAsset(
+                            None,
+                            Some(liquidity_source_id.token_pair_id.target_asset.clone()),
+                        ),
+                        Permission::TransferAsset(
+                            None,
+                            Some(data.pswap_asset_definition_id.clone()),
+                        ),
+                    ],
+                );
+                let domain = get_domain_mut(&domain_name, world_state_view)?;
+                domain
+                    .accounts
+                    .get_mut(&account_id)
+                    .ok_or("failed to find account")?
+                    .assets
+                    .insert(asset_id, asset);
             }
             _ => {}
         }
@@ -1496,18 +1486,10 @@ pub mod isi {
             // replicate generated id's for checking
             let xyk_pool_id =
                 LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
-            let storage_account_id_test = AccountId::new(
-                &format!(
-                    "{} XYK {}",
-                    STORAGE_ACCOUNT_NAME,
-                    &token_pair_id.get_symbol()
-                ),
-                &domain_name,
-            );
-            let pswap_asset_definition_id_test = AssetDefinitionId::new(
-                &format!("{} XYK {}", PSWAP_ASSET_NAME, &token_pair_id.get_symbol()),
-                &domain_name,
-            );
+            let storage_account_id_test =
+                AccountId::new(&xyk_pool_storage_account_name(&token_pair_id), &domain_name);
+            let pswap_asset_definition_id_test =
+                AssetDefinitionId::new(&xyk_pool_pswap_asset_name(&token_pair_id), &domain_name);
 
             // add minted tokens to the pool from account
             xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
@@ -1526,24 +1508,16 @@ pub mod isi {
                     .liquidity_sources
                     .get(&xyk_pool_id)
                     .expect("failed to find xyk pool in token pair");
-                if let LiquiditySourceData::XYKPool {
-                    pswap_asset_definition_id,
-                    storage_account_id,
-                    pswap_total_supply,
-                    base_asset_amount,
-                    target_asset_amount,
-                    k_last,
-                } = xyk_pool.data.clone()
-                {
-                    assert_eq!(&pswap_asset_definition_id, &pswap_asset_definition_id_test);
-                    assert_eq!(&storage_account_id, &storage_account_id_test);
-                    assert_eq!(pswap_total_supply, 5916);
-                    assert_eq!(base_asset_amount, 5000);
-                    assert_eq!(target_asset_amount, 7000);
-                    assert_eq!(k_last, 0);
-                } else {
-                    panic!("wrong data type of liquidity source")
-                }
+                let data = expect_xyk_pool_data(&xyk_pool).unwrap();
+                assert_eq!(
+                    &data.pswap_asset_definition_id,
+                    &pswap_asset_definition_id_test
+                );
+                assert_eq!(&data.storage_account_id, &storage_account_id_test);
+                assert_eq!(data.pswap_total_supply, 5916);
+                assert_eq!(data.base_asset_reserve, 5000);
+                assert_eq!(data.target_asset_reserve, 7000);
+                assert_eq!(data.k_last, 0);
             } else {
                 panic!("wrong enum variant returned for GetTokenPair");
             }
@@ -1609,7 +1583,7 @@ pub mod isi {
         }
 
         #[test]
-        fn test_mint_pswap_should_pass() {
+        fn test_xyk_pool_mint_pswap_should_pass() {
             let mut testkit = TestKit::new();
             let world_state_view = &mut testkit.world_state_view;
             let domain_name = testkit.domain_name.clone();
@@ -1632,25 +1606,20 @@ pub mod isi {
             let dex_id = DEXId::new(&domain_name);
             let token_pair_id =
                 TokenPairId::new(dex_id, base_asset_definition_id, target_asset_definition_id);
-            let asset_name = format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol());
+            let asset_name = xyk_pool_pswap_asset_name(&token_pair_id);
             let pswap_asset_definition_id = AssetDefinitionId::new(&asset_name, &domain_name);
             domain
                 .register_asset(AssetDefinition::new(pswap_asset_definition_id.clone()))
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register asset");
+            let mut data = XYKPoolData::new(pswap_asset_definition_id.clone(), account.id.clone());
 
             // set initial total supply to 100
-            let total_supply = 100u32;
-            let total_supply = mint_pswap(
-                pswap_asset_definition_id.clone(),
-                account.id.clone(),
-                100u32,
-                total_supply,
-                world_state_view,
-            )
-            .expect("failed to mint pswap");
+            data.pswap_total_supply = 100u32;
+            xyk_pool_mint_pswap(account.id.clone(), 100u32, world_state_view, &mut data)
+                .expect("failed to mint pswap");
             // after minting 100 pswap, total supply should be 200
-            assert_eq!(total_supply.clone(), 200u32);
+            assert_eq!(data.pswap_total_supply.clone(), 200u32);
 
             if let QueryResult::GetAccount(account_result) =
                 GetAccount::build_request(account.id.clone())
@@ -1754,7 +1723,7 @@ pub mod isi {
                 asset_definition_a.id.clone(),
                 asset_definition_b.id.clone(),
             );
-            let asset_name = format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol());
+            let asset_name = xyk_pool_pswap_asset_name(&token_pair_id);
             let pswap_asset_definition_id = AssetDefinitionId::new(&asset_name, &domain_name);
 
             // create account with permissions to transfer
@@ -1818,18 +1787,10 @@ pub mod isi {
             // replicate generated id's for checking
             let xyk_pool_id =
                 LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
-            let storage_account_id_test = AccountId::new(
-                &format!(
-                    "{} XYK {}",
-                    STORAGE_ACCOUNT_NAME,
-                    &token_pair_id.get_symbol()
-                ),
-                &domain_name,
-            );
-            let pswap_asset_definition_id_test = AssetDefinitionId::new(
-                &format!("{} XYK {}", PSWAP_ASSET_NAME, &token_pair_id.get_symbol()),
-                &domain_name,
-            );
+            let storage_account_id_test =
+                AccountId::new(&xyk_pool_storage_account_name(&token_pair_id), &domain_name);
+            let pswap_asset_definition_id_test =
+                AssetDefinitionId::new(&xyk_pool_pswap_asset_name(&token_pair_id), &domain_name);
 
             // add minted tokens to the pool from account
             xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
@@ -1853,24 +1814,17 @@ pub mod isi {
                     .liquidity_sources
                     .get(&xyk_pool_id)
                     .expect("failed to find xyk pool in token pair");
-                if let LiquiditySourceData::XYKPool {
-                    pswap_asset_definition_id,
-                    storage_account_id,
-                    pswap_total_supply,
-                    base_asset_amount,
-                    target_asset_amount,
-                    k_last,
-                } = xyk_pool.data.clone()
-                {
-                    assert_eq!(&pswap_asset_definition_id, &pswap_asset_definition_id_test);
-                    assert_eq!(&storage_account_id, &storage_account_id_test);
-                    assert_eq!(pswap_total_supply, 1000);
-                    assert_eq!(base_asset_amount, 846);
-                    assert_eq!(target_asset_amount, 1184);
-                    assert_eq!(k_last, 0);
-                } else {
-                    panic!("wrong data type of liquidity source")
-                }
+
+                let data = expect_xyk_pool_data(xyk_pool).unwrap();
+                assert_eq!(
+                    &data.pswap_asset_definition_id,
+                    &pswap_asset_definition_id_test
+                );
+                assert_eq!(&data.storage_account_id, &storage_account_id_test);
+                assert_eq!(data.pswap_total_supply, 1000);
+                assert_eq!(data.base_asset_reserve, 846);
+                assert_eq!(data.target_asset_reserve, 1184);
+                assert_eq!(data.k_last, 0);
             } else {
                 panic!("wrong enum variant returned for GetTokenPair");
             }
@@ -2216,8 +2170,6 @@ pub mod query {
                             DEXId::new(&base_asset.domain_name),
                             base_asset.clone(),
                             target_asset.clone(),
-                            0,
-                            0,
                         )
                     })
             {
