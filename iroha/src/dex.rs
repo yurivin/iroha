@@ -1112,6 +1112,259 @@ pub mod isi {
         Ok(())
     }
 
+    /// Core logic of `SwapExactTokensForTokensOnXYKPool` ISI, called by its `execute` function.
+    ///
+    /// `path` - chain of tokens, each pair represents a token pair with active xyk pool.
+    /// `amount_in` - desired input asset quantity.
+    /// `amount_out_min` - minimum expected output asset quantity.
+    /// `to` - account to receive output tokens.
+    /// `authority` - performs the operation, actual tokens are withdrawn from this account.
+    fn xyk_pool_swap_exact_tokens_for_tokens_execute(
+        path: &[<AssetDefinition as Identifiable>::Id],
+        amount_in: u32,
+        amount_out_min: u32,
+        to: <Account as Identifiable>::Id,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        let amounts = xyk_pool_get_amounts_out(amount_in, path, world_state_view)?;
+        if !(amounts.last().unwrap() >= &amount_out_min) {
+            return Err("insufficient output amount".to_owned());
+        }
+        let first_pool_id = liquidity_source_id_for_tokens(
+            path.get(0).unwrap().clone(),
+            path.get(1).unwrap().clone(),
+            LiquiditySourceType::XYKPool,
+            world_state_view,
+        )?;
+        let first_pool = get_liquidity_source(&first_pool_id, world_state_view)?;
+        let first_pool_data = expect_xyk_pool_data(&first_pool)?;
+        transfer_from(
+            path.first().unwrap().clone(),
+            authority.clone(),
+            first_pool_data.storage_account_id.clone(),
+            amounts.first().unwrap().clone(),
+            authority.clone(),
+            world_state_view,
+        )?;
+        xyk_pool_swap_all(&amounts, path, to, world_state_view)?;
+        Ok(())
+    }
+
+    fn liquidity_source_id_for_tokens(
+        asset_a: <AssetDefinition as Identifiable>::Id,
+        asset_b: <AssetDefinition as Identifiable>::Id,
+        liquidity_source_type: LiquiditySourceType,
+        world_state_view: &WorldStateView,
+    ) -> Result<<LiquiditySource as Identifiable>::Id, String> {
+        // sort tokens - find base and target
+        // currently base token is always XOR
+        let (base_asset, target_asset) = if asset_a.name == DEX_BASE_ASSET {
+            (asset_a, asset_b)
+        } else if asset_b.name == DEX_BASE_ASSET {
+            (asset_b, asset_a)
+        } else {
+            return Err("neither of tokens is base asset".to_owned());
+        };
+        // both tokens are guaranteed to be in same domain, therefore any could be taken for dex id
+        let dex_id = DEXId::new(&base_asset.domain_name);
+        let token_pair_id = TokenPairId::new(dex_id, base_asset, target_asset);
+        Ok(LiquiditySourceId::new(token_pair_id, liquidity_source_type))
+    }
+
+    fn xyk_pool_get_reserves(
+        asset_a: <AssetDefinition as Identifiable>::Id,
+        asset_b: <AssetDefinition as Identifiable>::Id,
+        world_state_view: &WorldStateView,
+    ) -> Result<(u32, u32), String> {
+        let xyk_pool_id = liquidity_source_id_for_tokens(
+            asset_a.clone(),
+            asset_b.clone(),
+            LiquiditySourceType::XYKPool,
+            world_state_view,
+        )?;
+        let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
+        let data = expect_xyk_pool_data(&xyk_pool)?;
+        if asset_a.name == DEX_BASE_ASSET {
+            Ok((data.base_asset_reserve, data.target_asset_reserve))
+        } else {
+            // `asset_b.name == DEX_BASE_ASSET` check already done before
+            Ok((data.target_asset_reserve, data.base_asset_reserve))
+        }
+    }
+
+    fn xyk_pool_get_amounts_out<'a>(
+        amount_in: u32,
+        path: &[<AssetDefinition as Identifiable>::Id],
+        world_state_view: &WorldStateView,
+    ) -> Result<Vec<u32>, String> {
+        if !(path.len() >= 2) {
+            return Err("invalid path".to_owned());
+        }
+
+        let mut amounts = Vec::new();
+        amounts.push(amount_in);
+        for i in 0..path.len() - 1 {
+            let (reserve_in, reserve_out) = xyk_pool_get_reserves(
+                path.get(i).unwrap().clone(),
+                path.get(i + 1).unwrap().clone(),
+                world_state_view,
+            )?;
+            amounts.push(xyk_pool_get_amount_out(
+                amounts.last().unwrap().clone(),
+                reserve_in,
+                reserve_out,
+            )?);
+        }
+        Ok(amounts)
+    }
+
+    fn xyk_pool_get_amount_out(
+        amount_in: u32,
+        reserve_in: u32,
+        reserve_out: u32,
+    ) -> Result<u32, String> {
+        if !(amount_in > 0) {
+            return Err("insufficient input amount".to_owned());
+        }
+        if !(reserve_in > 0 && reserve_out > 0) {
+            return Err("insufficient liquidity".to_owned());
+        }
+        let amount_in_with_fee = amount_in * 997;
+        let numerator = amount_in_with_fee * reserve_out;
+        let denominator = (reserve_in * 1000) + amount_in_with_fee;
+        Ok(numerator / denominator)
+    }
+
+    fn xyk_pool_swap_all(
+        amounts: &[u32],
+        path: &[<AssetDefinition as Identifiable>::Id],
+        to: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        for i in 0..path.len() - 1 {
+            let (input, output) = (path.get(i).unwrap(), path.get(i + 1).unwrap());
+            let amount_out = amounts.get(i + 1).unwrap().clone();
+            let ((base_out, target_out), (base_asset_id, target_asset_id)) =
+                if input.name == DEX_BASE_ASSET {
+                    ((0u32, amount_out), (input, output))
+                } else {
+                    // `asset_b.name == DEX_BASE_ASSET` check already done before
+                    ((amount_out, 0u32), (output, input))
+                };
+            // determine either next pair to receive swapped token or recepient account
+            let next_account = if i < path.len() - 2 {
+                let xyk_pool_id = liquidity_source_id_for_tokens(
+                    output.clone(),
+                    path.get(i + 2).unwrap().clone(),
+                    LiquiditySourceType::XYKPool,
+                    world_state_view,
+                )?;
+                let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
+                expect_xyk_pool_data(&xyk_pool)?.storage_account_id.clone()
+            } else {
+                to.clone()
+            };
+
+            xyk_pool_swap(
+                base_asset_id.clone(),
+                target_asset_id.clone(),
+                base_out,
+                target_out,
+                next_account,
+                world_state_view,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn xyk_pool_swap(
+        base_asset_id: <AssetDefinition as Identifiable>::Id,
+        target_asset_id: <AssetDefinition as Identifiable>::Id,
+        base_amount_out: u32,
+        target_amount_out: u32,
+        to: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        if !(base_amount_out > 0 || target_amount_out > 0) {
+            return Err("insufficient output amount".to_owned());
+        }
+        let xyk_pool_id = liquidity_source_id_for_tokens(
+            base_asset_id.clone(),
+            target_asset_id.clone(),
+            LiquiditySourceType::XYKPool,
+            world_state_view,
+        )?;
+        let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
+        let mut data = expect_xyk_pool_data(xyk_pool)?.clone();
+        if !(base_amount_out < data.base_asset_reserve
+            && target_amount_out < data.target_asset_reserve)
+        {
+            return Err("insufficient liquidity".to_owned());
+        }
+
+        // TODO: seems like invalid adderess comparison
+        // if !(to != base_asset_id && to != target_asset_id) {
+        //     return Err("invalid to".to_owned());
+        // }
+
+        if base_amount_out > 0 {
+            transfer_from_unchecked(
+                base_asset_id.clone(),
+                data.storage_account_id.clone(),
+                to.clone(),
+                base_amount_out,
+                world_state_view,
+            )?;
+        }
+        if target_amount_out > 0 {
+            transfer_from_unchecked(
+                target_asset_id.clone(),
+                data.storage_account_id.clone(),
+                to.clone(),
+                target_amount_out,
+                world_state_view,
+            )?;
+        }
+        let base_balance = get_asset_quantity(
+            data.storage_account_id.clone(),
+            base_asset_id.clone(),
+            world_state_view,
+        )?;
+        let target_balance = get_asset_quantity(
+            data.storage_account_id.clone(),
+            target_asset_id.clone(),
+            world_state_view,
+        )?;
+
+        let base_amount_in = if base_balance > data.base_asset_reserve - base_amount_out {
+            base_balance - (data.base_asset_reserve - base_amount_out)
+        } else {
+            0
+        };
+        let target_amount_in = if target_balance > data.target_asset_reserve - target_amount_out {
+            target_balance - (data.target_asset_reserve - target_amount_out)
+        } else {
+            0
+        };
+        if !(base_amount_in > 0 || target_amount_in > 0) {
+            return Err("insufficient input amount".to_owned());
+        }
+
+        let base_balance_adjusted = (base_balance * 1000) - (base_amount_in * 3);
+        let target_balance_adjusted = (target_balance * 1000) - (target_amount_in * 3);
+        if !(base_balance_adjusted * target_balance_adjusted
+            >= data.base_asset_reserve * data.target_asset_reserve * 1000u32.pow(2))
+        {
+            return Err("K error".to_owned());
+        }
+
+        xyk_pool_update(base_balance, target_balance, world_state_view, &mut data)?;
+        let xyk_pool = get_liquidity_source_mut(&xyk_pool_id, world_state_view)?;
+        mem::replace(expect_xyk_pool_data_mut(xyk_pool)?, data);
+        Ok(())
+    }
+
     /// Mint permissions required to participate in trades
     ///
     /// TODO: this function has unchecked operations and exists solely for debug purposes
@@ -1888,6 +2141,9 @@ pub mod isi {
                 panic!("wrong enum variant returned for GetAccount");
             }
         }
+
+        #[test]
+        fn test_xyk_pool_swap_assets_should_pass() {}
     }
 }
 
