@@ -11,6 +11,7 @@ use std::mem;
 
 const PSWAP_ASSET_NAME: &str = "PSWAP";
 const STORAGE_ACCOUNT_NAME: &str = "STORE";
+const XYK_POOL: &str = "XYKPOOL";
 const DEX_BASE_ASSET: &str = "XOR";
 const MINIMUM_LIQUIDITY: u32 = 1000;
 
@@ -84,12 +85,7 @@ impl TokenPairId {
     }
     /// Symbol representation of the Token Pair.
     pub fn get_symbol(&self) -> String {
-        // TODO: elaborate the format
-        format!(
-            "{}-{}",
-            self.base_asset.to_string(),
-            self.target_asset.to_string(),
-        )
+        format!("{}/{}", self.base_asset.name, self.target_asset.name)
     }
 }
 
@@ -258,13 +254,19 @@ impl LiquiditySource {
 }
 
 fn xyk_pool_pswap_asset_name(token_pair_id: &<TokenPair as Identifiable>::Id) -> String {
-    format!("{} XYK {}", PSWAP_ASSET_NAME, token_pair_id.get_symbol())
+    format!(
+        "{} {} {}",
+        PSWAP_ASSET_NAME,
+        XYK_POOL,
+        token_pair_id.get_symbol()
+    )
 }
 
 fn xyk_pool_storage_account_name(token_pair_id: &<TokenPair as Identifiable>::Id) -> String {
     format!(
-        "{} XYK {}",
+        "{} {} {}",
         STORAGE_ACCOUNT_NAME,
+        XYK_POOL,
         token_pair_id.get_symbol()
     )
 }
@@ -290,15 +292,21 @@ pub mod isi {
         /// Variant of instruction to add liquidity source for existing `TokenPair`.
         AddLiquiditySource(LiquiditySource, <TokenPair as Identifiable>::Id),
         /// Variant of instruction to deposit tokens to liquidity pool.
-        /// `LiquiditySource` <-- Amount Base Desired, Amount Target Desired, Amount Base Min, Amount Target Min
+        /// `LiquiditySource` <-- Quantity Base Desired, Quantity Target Desired, Quantity Base Min, Quantity Target Min
         AddLiquidityToXYKPool(<LiquiditySource as Identifiable>::Id, u32, u32, u32, u32),
         /// Variant of instruction to withdraw tokens from liquidity pool by burning pswap.
-        /// `LiquiditySource` --> Liquidity, Amount Base Min, Amount Target Min
+        /// `LiquiditySource` --> Liquidity, Quantity Base Min, Quantity Target Min
         RemoveLiquidityFromXYKPool(<LiquiditySource as Identifiable>::Id, u32, u32, u32),
-        /// Variant of instruction to mint permissions needeed for trading on dex for account.
-        /// TODO: this ISI is for debug purposes and should be deleted later
-        ActivateXYKPoolTraderAccount(
-            <LiquiditySource as Identifiable>::Id,
+        /// Variant of instruction to swap with exact quantity of input tokens and receive corresponding quantity of output tokens.
+        /// `AssetDefinition`'s, Input Quantity --> Output Quantity Min
+        SwapExactTokensForTokensOnXYKPool(Vec<<AssetDefinition as Identifiable>::Id>, u32, u32),
+        /// Variant of instruction to swap with exact quantity of output tokens and send corresponding quantity of input tokens.
+        /// `AssetDefinition`'a, Output Quantity --> Input Quantity Max
+        SwapTokensForExactTokensOnXYKPool(Vec<<AssetDefinition as Identifiable>::Id>, u32, u32),
+        /// Variant of instruction to mint permissions for account.
+        /// TODO: this isi is debug-only and should be deleted when permission minting will be avaiable in core
+        AddTransferPermissionForAccount(
+            <AssetDefinition as Identifiable>::Id,
             <Account as Identifiable>::Id,
         ),
     }
@@ -358,14 +366,39 @@ pub mod isi {
                     authority,
                     world_state_view,
                 ),
-                DEXInstruction::ActivateXYKPoolTraderAccount(liquidity_source_id, account_id) => {
-                    activate_trader_account_execute(
-                        liquidity_source_id.clone(),
-                        account_id.clone(),
-                        authority,
-                        world_state_view,
-                    )
-                }
+                DEXInstruction::SwapExactTokensForTokensOnXYKPool(
+                    path,
+                    amount_in,
+                    amount_out_min,
+                ) => xyk_pool_swap_exact_tokens_for_tokens_execute(
+                    &path,
+                    amount_in.clone(),
+                    amount_out_min.clone(),
+                    authority.clone(),
+                    authority,
+                    world_state_view,
+                ),
+                DEXInstruction::SwapTokensForExactTokensOnXYKPool(
+                    path,
+                    amount_out,
+                    amount_in_max,
+                ) => xyk_pool_swap_tokens_for_exact_tokens_execute(
+                    &path,
+                    amount_out.clone(),
+                    amount_in_max.clone(),
+                    authority.clone(),
+                    authority,
+                    world_state_view,
+                ),
+                DEXInstruction::AddTransferPermissionForAccount(
+                    asset_definition_id,
+                    account_id,
+                ) => add_transfer_permission_for_account_execute(
+                    asset_definition_id.clone(),
+                    account_id.clone(),
+                    authority,
+                    world_state_view,
+                ),
             }
         }
     }
@@ -1112,6 +1145,19 @@ pub mod isi {
         Ok(())
     }
 
+    /// Constructor of `SwapExactTokensForTokensOnXYKPool` ISI.
+    pub fn xyk_pool_swap_exact_tokens_for_tokens(
+        path: Vec<<AssetDefinition as Identifiable>::Id>,
+        amount_in: u32,
+        amount_out_min: u32,
+    ) -> Instruction {
+        Instruction::DEX(DEXInstruction::SwapExactTokensForTokensOnXYKPool(
+            path,
+            amount_in,
+            amount_out_min,
+        ))
+    }
+
     /// Core logic of `SwapExactTokensForTokensOnXYKPool` ISI, called by its `execute` function.
     ///
     /// `path` - chain of tokens, each pair represents a token pair with active xyk pool.
@@ -1131,11 +1177,61 @@ pub mod isi {
         if !(amounts.last().unwrap() >= &amount_out_min) {
             return Err("insufficient output amount".to_owned());
         }
+        xyk_pool_swap_tokens_execute(path, &amounts, to, authority, world_state_view)
+    }
+
+    /// Constructor of `SwapTokensForExactTokensOnXYKPool` ISI.
+    pub fn xyk_pool_swap_tokens_for_exact_tokens(
+        path: Vec<<AssetDefinition as Identifiable>::Id>,
+        amount_out: u32,
+        amount_in_max: u32,
+    ) -> Instruction {
+        Instruction::DEX(DEXInstruction::SwapTokensForExactTokensOnXYKPool(
+            path,
+            amount_out,
+            amount_in_max,
+        ))
+    }
+
+    /// Core logic of `SwapTokensForExactTokensOnXYKPool` ISI, called by its `execute` function.
+    ///
+    /// `path` - chain of tokens, each pair represents a token pair with active xyk pool.
+    /// `amount_out` - desired output asset quantity.
+    /// `amount_in_max` - maximum expected input asset quantity.
+    /// `to` - account to receive output tokens.
+    /// `authority` - performs the operation, actual tokens are withdrawn from this account.
+    fn xyk_pool_swap_tokens_for_exact_tokens_execute(
+        path: &[<AssetDefinition as Identifiable>::Id],
+        amount_out: u32,
+        amount_in_max: u32,
+        to: <Account as Identifiable>::Id,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
+        let amounts = xyk_pool_get_amounts_in(amount_out, path, world_state_view)?;
+        if !(amounts.first().unwrap() <= &amount_in_max) {
+            return Err("excessive input amount".to_owned());
+        }
+        xyk_pool_swap_tokens_execute(path, &amounts, to, authority, world_state_view)
+    }
+
+    /// Entry point for SwapTokens-related ISI's.
+    ///
+    /// `path` - chain of tokens, each pair represents a token pair with active xyk pool.
+    /// `amounts` - amounts of each token to be swapped on pools.
+    /// `to` - account to receive output tokens.
+    /// `authority` - performs the operation, actual tokens are withdrawn from this account.
+    fn xyk_pool_swap_tokens_execute(
+        path: &[<AssetDefinition as Identifiable>::Id],
+        amounts: &[u32],
+        to: <Account as Identifiable>::Id,
+        authority: <Account as Identifiable>::Id,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<(), String> {
         let first_pool_id = liquidity_source_id_for_tokens(
             path.get(0).unwrap().clone(),
             path.get(1).unwrap().clone(),
             LiquiditySourceType::XYKPool,
-            world_state_view,
         )?;
         let first_pool = get_liquidity_source(&first_pool_id, world_state_view)?;
         let first_pool_data = expect_xyk_pool_data(&first_pool)?;
@@ -1147,15 +1243,16 @@ pub mod isi {
             authority.clone(),
             world_state_view,
         )?;
-        xyk_pool_swap_all(&amounts, path, to, world_state_view)?;
+        xyk_pool_swap_all(amounts, path, to, world_state_view)?;
         Ok(())
     }
 
+    /// Given unordered pair of asset ids, construct id for
+    /// corresponding liquidity source.
     fn liquidity_source_id_for_tokens(
         asset_a: <AssetDefinition as Identifiable>::Id,
         asset_b: <AssetDefinition as Identifiable>::Id,
         liquidity_source_type: LiquiditySourceType,
-        world_state_view: &WorldStateView,
     ) -> Result<<LiquiditySource as Identifiable>::Id, String> {
         // sort tokens - find base and target
         // currently base token is always XOR
@@ -1172,6 +1269,8 @@ pub mod isi {
         Ok(LiquiditySourceId::new(token_pair_id, liquidity_source_type))
     }
 
+    /// Given ordered pair of asset ids, return ordered reserve quantities
+    /// from corresponding xyk pool.
     fn xyk_pool_get_reserves(
         asset_a: <AssetDefinition as Identifiable>::Id,
         asset_b: <AssetDefinition as Identifiable>::Id,
@@ -1181,7 +1280,6 @@ pub mod isi {
             asset_a.clone(),
             asset_b.clone(),
             LiquiditySourceType::XYKPool,
-            world_state_view,
         )?;
         let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
         let data = expect_xyk_pool_data(&xyk_pool)?;
@@ -1193,7 +1291,8 @@ pub mod isi {
         }
     }
 
-    fn xyk_pool_get_amounts_out<'a>(
+    /// Performs chained get_amount_out calculations on any number of pairs.
+    fn xyk_pool_get_amounts_out(
         amount_in: u32,
         path: &[<AssetDefinition as Identifiable>::Id],
         world_state_view: &WorldStateView,
@@ -1219,6 +1318,8 @@ pub mod isi {
         Ok(amounts)
     }
 
+    /// Given an input amount of an asset and pair reserves, returns
+    /// the maximum output amount of the other asset.
     fn xyk_pool_get_amount_out(
         amount_in: u32,
         reserve_in: u32,
@@ -1230,12 +1331,62 @@ pub mod isi {
         if !(reserve_in > 0 && reserve_out > 0) {
             return Err("insufficient liquidity".to_owned());
         }
-        let amount_in_with_fee = amount_in * 997;
-        let numerator = amount_in_with_fee * reserve_out;
-        let denominator = (reserve_in * 1000) + amount_in_with_fee;
-        Ok(numerator / denominator)
+        let amount_in_with_fee = amount_in as u128 * 997;
+        let numerator = amount_in_with_fee * reserve_out as u128;
+        let denominator = (reserve_in as u128 * 1000) + amount_in_with_fee;
+        Ok((numerator / denominator) as u32)
     }
 
+    /// Performs chained get_amount_in calculations on any number of pairs.
+    fn xyk_pool_get_amounts_in(
+        amount_out: u32,
+        path: &[<AssetDefinition as Identifiable>::Id],
+        world_state_view: &WorldStateView,
+    ) -> Result<Vec<u32>, String> {
+        if !(path.len() >= 2) {
+            return Err("invalid path".to_owned());
+        }
+        let mut amounts = Vec::new();
+        amounts.push(amount_out);
+        for i in (1..path.len()).rev() {
+            let (reserve_in, reserve_out) = xyk_pool_get_reserves(
+                path.get(i - 1).unwrap().clone(),
+                path.get(i).unwrap().clone(),
+                world_state_view,
+            )?;
+            amounts.push(xyk_pool_get_amount_in(
+                amounts.last().unwrap().clone(),
+                reserve_in,
+                reserve_out,
+            )?);
+        }
+        amounts.reverse();
+        Ok(amounts)
+    }
+
+    /// Given an output amount of an asset and pair reserves, returns a required
+    /// input amount of the other asset.
+    fn xyk_pool_get_amount_in(
+        amount_out: u32,
+        reserve_in: u32,
+        reserve_out: u32,
+    ) -> Result<u32, String> {
+        if !(amount_out > 0) {
+            return Err("insufficient output amount".to_owned());
+        }
+        if !(reserve_in > 0 && reserve_out > 0) {
+            return Err("insufficient liquidity".to_owned());
+        }
+        if !(reserve_out != amount_out) {
+            return Err("can't withdraw full reserve".to_owned());
+        }
+        let numerator = reserve_in as u128 * amount_out as u128 * 1000;
+        let denominator = (reserve_out as u128 - amount_out as u128) * 997;
+        Ok(((numerator / denominator) + 1) as u32)
+    }
+
+    /// Iterate through the path with according amounts and perform swaps on
+    /// each of xyk pools.
     fn xyk_pool_swap_all(
         amounts: &[u32],
         path: &[<AssetDefinition as Identifiable>::Id],
@@ -1245,7 +1396,8 @@ pub mod isi {
         for i in 0..path.len() - 1 {
             let (input, output) = (path.get(i).unwrap(), path.get(i + 1).unwrap());
             let amount_out = amounts.get(i + 1).unwrap().clone();
-            let ((base_out, target_out), (base_asset_id, target_asset_id)) =
+            // sort tokens
+            let ((base_quantity_out, target_quantity_out), (base_asset_id, target_asset_id)) =
                 if input.name == DEX_BASE_ASSET {
                     ((0u32, amount_out), (input, output))
                 } else {
@@ -1258,19 +1410,18 @@ pub mod isi {
                     output.clone(),
                     path.get(i + 2).unwrap().clone(),
                     LiquiditySourceType::XYKPool,
-                    world_state_view,
                 )?;
                 let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
                 expect_xyk_pool_data(&xyk_pool)?.storage_account_id.clone()
             } else {
                 to.clone()
             };
-
+            // perform swap on pool for pair
             xyk_pool_swap(
                 base_asset_id.clone(),
                 target_asset_id.clone(),
-                base_out,
-                target_out,
+                base_quantity_out,
+                target_quantity_out,
                 next_account,
                 world_state_view,
             )?;
@@ -1278,6 +1429,8 @@ pub mod isi {
         Ok(())
     }
 
+    /// Assuming that input tokens are already deposited into pool,
+    /// withdraw corresponding output tokens.
     fn xyk_pool_swap(
         base_asset_id: <AssetDefinition as Identifiable>::Id,
         target_asset_id: <AssetDefinition as Identifiable>::Id,
@@ -1293,7 +1446,6 @@ pub mod isi {
             base_asset_id.clone(),
             target_asset_id.clone(),
             LiquiditySourceType::XYKPool,
-            world_state_view,
         )?;
         let xyk_pool = get_liquidity_source(&xyk_pool_id, world_state_view)?;
         let mut data = expect_xyk_pool_data(xyk_pool)?.clone();
@@ -1302,12 +1454,6 @@ pub mod isi {
         {
             return Err("insufficient liquidity".to_owned());
         }
-
-        // TODO: seems like invalid adderess comparison
-        // if !(to != base_asset_id && to != target_asset_id) {
-        //     return Err("invalid to".to_owned());
-        // }
-
         if base_amount_out > 0 {
             transfer_from_unchecked(
                 base_asset_id.clone(),
@@ -1336,7 +1482,6 @@ pub mod isi {
             target_asset_id.clone(),
             world_state_view,
         )?;
-
         let base_amount_in = if base_balance > data.base_asset_reserve - base_amount_out {
             base_balance - (data.base_asset_reserve - base_amount_out)
         } else {
@@ -1350,69 +1495,63 @@ pub mod isi {
         if !(base_amount_in > 0 || target_amount_in > 0) {
             return Err("insufficient input amount".to_owned());
         }
-
-        let base_balance_adjusted = (base_balance * 1000) - (base_amount_in * 3);
-        let target_balance_adjusted = (target_balance * 1000) - (target_amount_in * 3);
+        let base_balance_adjusted = (base_balance as u128 * 1000) - (base_amount_in as u128 * 3);
+        let target_balance_adjusted =
+            (target_balance as u128 * 1000) - (target_amount_in as u128 * 3);
         if !(base_balance_adjusted * target_balance_adjusted
-            >= data.base_asset_reserve * data.target_asset_reserve * 1000u32.pow(2))
+            >= data.base_asset_reserve as u128
+                * data.target_asset_reserve as u128
+                * 1000u128.pow(2))
         {
-            return Err("K error".to_owned());
+            return Err("k error".to_owned());
         }
-
         xyk_pool_update(base_balance, target_balance, world_state_view, &mut data)?;
         let xyk_pool = get_liquidity_source_mut(&xyk_pool_id, world_state_view)?;
         mem::replace(expect_xyk_pool_data_mut(xyk_pool)?, data);
         Ok(())
     }
 
-    /// Mint permissions required to participate in trades
-    ///
-    /// TODO: this function has unchecked operations and exists solely for debug purposes
-    fn activate_trader_account_execute(
-        liquidity_source_id: <LiquiditySource as Identifiable>::Id,
+    /// Constructor of `AddTransferPermissionForAccount` ISI
+    pub fn add_transfer_permission_for_account(
+        asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        account_id: <Account as Identifiable>::Id,
+    ) -> Instruction {
+        Instruction::DEX(DEXInstruction::AddTransferPermissionForAccount(
+            asset_definition_id,
+            account_id,
+        ))
+    }
+
+    /// Mint permission for account.
+    /// TODO: this is temporary function made for debug purposes, remove when permission minting is avaiable in core
+    fn add_transfer_permission_for_account_execute(
+        asset_definition_id: <AssetDefinition as Identifiable>::Id,
         account_id: <Account as Identifiable>::Id,
         _authority: <Account as Identifiable>::Id,
         world_state_view: &mut WorldStateView,
     ) -> Result<(), String> {
-        match liquidity_source_id.liquidity_source_type.clone() {
-            LiquiditySourceType::XYKPool => {
-                let domain_name = account_id.domain_name.clone();
-                let permission_asset_definition_id = permission_asset_definition_id();
-                let asset_id = AssetId {
-                    definition_id: permission_asset_definition_id.clone(),
-                    account_id: account_id.clone(),
-                };
-                let liquidity_source =
-                    get_liquidity_source(&liquidity_source_id, world_state_view)?;
-                let data = expect_xyk_pool_data(liquidity_source)?;
-
-                let asset = Asset::with_permissions(
-                    asset_id.clone(),
-                    &[
-                        Permission::TransferAsset(
-                            None,
-                            Some(liquidity_source_id.token_pair_id.base_asset.clone()),
-                        ),
-                        Permission::TransferAsset(
-                            None,
-                            Some(liquidity_source_id.token_pair_id.target_asset.clone()),
-                        ),
-                        Permission::TransferAsset(
-                            None,
-                            Some(data.pswap_asset_definition_id.clone()),
-                        ),
-                    ],
-                );
-                let domain = get_domain_mut(&domain_name, world_state_view)?;
-                domain
-                    .accounts
-                    .get_mut(&account_id)
-                    .ok_or("failed to find account")?
-                    .assets
-                    .insert(asset_id, asset);
-            }
-            _ => {}
-        }
+        let domain_name = asset_definition_id.domain_name.clone();
+        let domain = get_domain_mut(&domain_name, world_state_view)?;
+        let asset_id = AssetId {
+            definition_id: permission_asset_definition_id(),
+            account_id: account_id.clone(),
+        };
+        domain
+            .accounts
+            .get_mut(&account_id)
+            .ok_or("failed to find account")?
+            .assets
+            .entry(asset_id.clone())
+            .and_modify(|asset| {
+                let permission = Permission::TransferAsset(None, Some(asset_definition_id.clone()));
+                if !asset.permissions.origin.contains(&permission) {
+                    asset.permissions.origin.push(permission);
+                }
+            })
+            .or_insert(Asset::with_permission(
+                asset_id.clone(),
+                Permission::TransferAsset(None, Some(asset_definition_id.clone())),
+            ));
         Ok(())
     }
 
@@ -1506,6 +1645,151 @@ pub mod isi {
                     domain_name,
                 }
             }
+
+            fn initialize_dex(&mut self) {
+                let world_state_view = &mut self.world_state_view;
+
+                // initialize dex in domain
+                initialize_dex(&self.domain_name, self.dex_owner_account_id.clone())
+                    .execute(self.dex_owner_account_id.clone(), world_state_view)
+                    .expect("failed to initialize dex");
+            }
+
+            fn create_token_pair(
+                &mut self,
+                base_asset_name: &str,
+                target_asset_name: &str,
+            ) -> <TokenPair as Identifiable>::Id {
+                let world_state_view = &mut self.world_state_view;
+                let domain = world_state_view
+                    .read_domain(&self.domain_name)
+                    .expect("domain not found")
+                    .clone();
+
+                // register assets in domain
+                let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new(
+                    base_asset_name,
+                    &self.domain_name,
+                ));
+                domain
+                    .register_asset(asset_definition_a.clone())
+                    .execute(self.root_account_id.clone(), world_state_view)
+                    .expect("failed to register asset");
+                let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new(
+                    target_asset_name,
+                    &self.domain_name,
+                ));
+                domain
+                    .register_asset(asset_definition_b.clone())
+                    .execute(self.root_account_id.clone(), world_state_view)
+                    .expect("failed to register asset");
+
+                // register pair for exchange assets
+                create_token_pair(
+                    asset_definition_a.id.clone(),
+                    asset_definition_b.id.clone(),
+                    &self.domain_name,
+                )
+                .execute(self.dex_owner_account_id.clone(), world_state_view)
+                .expect("create token pair failed");
+
+                // create resulting token pair id
+                let token_pair_id = TokenPairId::new(
+                    DEXId::new(&self.domain_name),
+                    asset_definition_a.id.clone(),
+                    asset_definition_b.id.clone(),
+                );
+                token_pair_id
+            }
+
+            fn mint_asset(
+                &mut self,
+                asset_definition_id: <AssetDefinition as Identifiable>::Id,
+                account_id: <Account as Identifiable>::Id,
+                quantity: u32,
+            ) {
+                let asset_a_id = AssetId::new(asset_definition_id.clone(), account_id.clone());
+                Mint::new(quantity, asset_a_id.clone())
+                    .execute(self.root_account_id.clone(), &mut self.world_state_view)
+                    .expect("mint asset failed");
+            }
+
+            fn xyk_pool_create(
+                &mut self,
+                token_pair_id: <TokenPair as Identifiable>::Id,
+            ) -> (
+                <LiquiditySource as Identifiable>::Id,
+                <Account as Identifiable>::Id,
+                <AssetDefinition as Identifiable>::Id,
+            ) {
+                create_xyk_pool(token_pair_id.clone())
+                    .execute(
+                        self.dex_owner_account_id.clone(),
+                        &mut self.world_state_view,
+                    )
+                    .expect("create xyk pool failed");
+                let xyk_pool_id =
+                    LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
+                let storage_account_id = AccountId::new(
+                    &xyk_pool_storage_account_name(&token_pair_id),
+                    &self.domain_name,
+                );
+                let pswap_asset_definition_id = AssetDefinitionId::new(
+                    &xyk_pool_pswap_asset_name(&token_pair_id),
+                    &self.domain_name,
+                );
+                (xyk_pool_id, storage_account_id, pswap_asset_definition_id)
+            }
+
+            fn create_trader_account(
+                &mut self,
+                account_name: &str,
+                xyk_pool_id: <LiquiditySource as Identifiable>::Id,
+            ) -> <Account as Identifiable>::Id {
+                let world_state_view = &mut self.world_state_view;
+                let domain = world_state_view
+                    .read_domain(&self.domain_name)
+                    .expect("domain not found")
+                    .clone();
+                let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+                let account_id = AccountId::new(account_name, &self.domain_name);
+                let mut account = Account::with_signatory(
+                    &account_id.name,
+                    &account_id.domain_name,
+                    key_pair.public_key.clone(),
+                );
+                let permission_asset_definition_id = permission_asset_definition_id();
+                let permission_asset_id = AssetId {
+                    definition_id: permission_asset_definition_id.clone(),
+                    account_id: account_id.clone(),
+                };
+                let liquidity_source =
+                    get_liquidity_source(&xyk_pool_id, world_state_view).unwrap();
+                let data = expect_xyk_pool_data(liquidity_source).unwrap();
+                let permission_asset = Asset::with_permissions(
+                    permission_asset_id.clone(),
+                    &[
+                        Permission::TransferAsset(
+                            None,
+                            Some(xyk_pool_id.token_pair_id.base_asset.clone()),
+                        ),
+                        Permission::TransferAsset(
+                            None,
+                            Some(xyk_pool_id.token_pair_id.target_asset.clone()),
+                        ),
+                        Permission::TransferAsset(
+                            None,
+                            Some(data.pswap_asset_definition_id.clone()),
+                        ),
+                    ],
+                );
+                account.assets.insert(permission_asset_id, permission_asset);
+                domain
+                    .register_account(account)
+                    .execute(self.root_account_id.clone(), world_state_view)
+                    .expect("failed to create account");
+                account_id
+            }
         }
 
         #[test]
@@ -1571,52 +1855,19 @@ pub mod isi {
             let mut testkit = TestKit::new();
             let domain_name = testkit.domain_name.clone();
 
-            // get world state view and dex domain
-            let world_state_view = &mut testkit.world_state_view;
-            let domain = world_state_view
-                .read_domain(&domain_name)
-                .expect("domain not found")
-                .clone();
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
 
-            // initialize dex in domain
-            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-                .expect("failed to initialize dex");
-
-            // register assets in domain
-            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("XOR", "Company"));
-            domain
-                .register_asset(asset_definition_a.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("DOT", "Company"));
-            domain
-                .register_asset(asset_definition_b.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-
-            create_token_pair(
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-                &domain_name,
-            )
-            .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-            .expect("create token pair failed");
-
-            let token_pair_id = TokenPairId::new(
-                DEXId::new(&domain_name),
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-            );
             // TODO: rewrite into iroha query calls
-            let token_pair = query_token_pair(token_pair_id.clone(), world_state_view)
-                .expect("failed to query token pair");
+            let token_pair = query_token_pair(token_pair_id.clone(), &mut testkit.world_state_view)
+                .expect("failed to query token pair")
+                .clone();
             assert_eq!(&token_pair_id, &token_pair.id);
 
             if let QueryResult::GetTokenPairList(token_pair_list_result) =
                 GetTokenPairList::build_request(domain_name.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair list")
             {
                 assert_eq!(
@@ -1627,18 +1878,22 @@ pub mod isi {
                 panic!("wrong enum variant returned for GetTokenPairList");
             }
 
-            let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
-                .expect("failed to query token pair count");
+            let token_pair_count =
+                query_token_pair_count(&domain_name, &mut testkit.world_state_view)
+                    .expect("failed to query token pair count");
             assert_eq!(token_pair_count, 1);
 
             remove_token_pair(token_pair_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
+                .execute(
+                    testkit.dex_owner_account_id.clone(),
+                    &mut testkit.world_state_view,
+                )
                 .expect("remove token pair failed");
 
             if let QueryResult::GetTokenPairList(token_pair_list_result) =
                 GetTokenPairList::build_request(domain_name.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair list")
             {
                 assert!(&token_pair_list_result.token_pair_list.is_empty());
@@ -1646,114 +1901,67 @@ pub mod isi {
                 panic!("wrong enum variant returned for GetTokenPairList");
             }
 
-            let token_pair_count = query_token_pair_count(&domain_name, world_state_view)
-                .expect("failed to query token pair count");
+            let token_pair_count =
+                query_token_pair_count(&domain_name, &mut testkit.world_state_view)
+                    .expect("failed to query token pair count");
             assert_eq!(token_pair_count, 0);
+        }
+
+        #[test]
+        fn test_xyk_pool_create_should_pass() {
+            let mut testkit = TestKit::new();
+
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
+            let (xyk_pool_id, storage_account_id, pswap_asset_definition_id) =
+                testkit.xyk_pool_create(token_pair_id.clone());
+
+            let xyk_pool = get_liquidity_source(&xyk_pool_id, &testkit.world_state_view).unwrap();
+            let xyk_pool_data = expect_xyk_pool_data(&xyk_pool).unwrap();
+
+            assert_eq!(&storage_account_id, &xyk_pool_data.storage_account_id);
+            assert_eq!(
+                &pswap_asset_definition_id,
+                &xyk_pool_data.pswap_asset_definition_id
+            );
+            assert_eq!(0u32, xyk_pool_data.base_asset_reserve);
+            assert_eq!(0u32, xyk_pool_data.target_asset_reserve);
+            assert_eq!(0u32, xyk_pool_data.k_last);
+            assert_eq!(0u32, xyk_pool_data.pswap_total_supply);
+            assert_eq!(None, xyk_pool_data.fee_to)
         }
 
         #[test]
         fn test_xyk_pool_add_liquidity_should_pass() {
             let mut testkit = TestKit::new();
-            let domain_name = testkit.domain_name.clone();
 
-            // get world state view and dex domain
-            let world_state_view = &mut testkit.world_state_view;
-            let domain = world_state_view
-                .read_domain(&domain_name)
-                .expect("domain not found")
-                .clone();
-
-            // initialize dex in domain
-            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-                .expect("failed to initialize dex");
-
-            // register assets in domain
-            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("XOR", "Company"));
-            domain
-                .register_asset(asset_definition_a.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("DOT", "Company"));
-            domain
-                .register_asset(asset_definition_b.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-
-            // create account with permissions to transfer
-            let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
-            let account_id = AccountId::new("User", &domain_name);
-            let mut account = Account::with_signatory(
-                &account_id.name,
-                &account_id.domain_name,
-                key_pair.public_key.clone(),
+            // prepare environment
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
+            let (xyk_pool_id, storage_account_id, pswap_asset_definition_id) =
+                testkit.xyk_pool_create(token_pair_id.clone());
+            let account_id = testkit.create_trader_account("Trader", xyk_pool_id.clone());
+            testkit.mint_asset(
+                token_pair_id.base_asset.clone(),
+                account_id.clone(),
+                5000u32,
             );
-            let permission_asset_definition_id = permission_asset_definition_id();
-            let permission_asset_id = AssetId {
-                definition_id: permission_asset_definition_id.clone(),
-                account_id: account_id.clone(),
-            };
-            let permission_asset = Asset::with_permissions(
-                permission_asset_id.clone(),
-                &[
-                    Permission::TransferAsset(None, Some(asset_definition_a.id.clone())),
-                    Permission::TransferAsset(None, Some(asset_definition_b.id.clone())),
-                ],
+            testkit.mint_asset(
+                token_pair_id.target_asset.clone(),
+                account_id.clone(),
+                7000u32,
             );
-            account.assets.insert(permission_asset_id, permission_asset);
-            domain
-                .register_account(account)
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to create account");
-
-            // mint tokens to account
-            let asset_a_id = AssetId::new(asset_definition_a.id.clone(), account_id.clone());
-            let asset_b_id = AssetId::new(asset_definition_b.id.clone(), account_id.clone());
-            Mint::new(5000u32, asset_a_id.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("mint asset failed");
-            Mint::new(7000u32, asset_b_id.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("mint asset failed");
-
-            // register pair for exchange assets
-            create_token_pair(
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-                &domain_name,
-            )
-            .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-            .expect("create token pair failed");
-
-            let token_pair_id = TokenPairId::new(
-                DEXId::new(&domain_name),
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-            );
-
-            // initialize xyk pool for token pair
-            create_xyk_pool(token_pair_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-                .expect("create xyk pool failed");
-
-            // replicate generated id's for checking
-            let xyk_pool_id =
-                LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
-            let storage_account_id_test =
-                AccountId::new(&xyk_pool_storage_account_name(&token_pair_id), &domain_name);
-            let pswap_asset_definition_id_test =
-                AssetDefinitionId::new(&xyk_pool_pswap_asset_name(&token_pair_id), &domain_name);
 
             // add minted tokens to the pool from account
             xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), world_state_view)
+                .execute(account_id.clone(), &mut testkit.world_state_view)
                 .expect("add liquidity failed");
 
             // check state of XYK Pool
             if let QueryResult::GetTokenPair(token_pair_result) =
                 GetTokenPair::build_request(token_pair_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
                 let token_pair = token_pair_result.token_pair;
@@ -1762,11 +1970,8 @@ pub mod isi {
                     .get(&xyk_pool_id)
                     .expect("failed to find xyk pool in token pair");
                 let data = expect_xyk_pool_data(&xyk_pool).unwrap();
-                assert_eq!(
-                    &data.pswap_asset_definition_id,
-                    &pswap_asset_definition_id_test
-                );
-                assert_eq!(&data.storage_account_id, &storage_account_id_test);
+                assert_eq!(&data.pswap_asset_definition_id, &pswap_asset_definition_id);
+                assert_eq!(&data.storage_account_id, &storage_account_id);
                 assert_eq!(data.pswap_total_supply, 5916);
                 assert_eq!(data.base_asset_reserve, 5000);
                 assert_eq!(data.target_asset_reserve, 7000);
@@ -1779,22 +1984,26 @@ pub mod isi {
             if let QueryResult::GetAccount(account_result) =
                 GetAccount::build_request(account_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
+                let account_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), account_id.clone());
+                let account_target_asset_id =
+                    AssetId::new(token_pair_id.target_asset.clone(), account_id.clone());
                 let account = account_result.account;
                 let base_asset = account
                     .assets
-                    .get(&asset_a_id)
+                    .get(&account_base_asset_id)
                     .expect("failed to get base asset");
                 let target_asset = account
                     .assets
-                    .get(&asset_b_id)
+                    .get(&account_target_asset_id)
                     .expect("failed to get target asset");
                 assert_eq!(base_asset.quantity.clone(), 0);
                 assert_eq!(target_asset.quantity.clone(), 0);
                 let pswap_asset_id =
-                    AssetId::new(pswap_asset_definition_id_test.clone(), account_id.clone());
+                    AssetId::new(pswap_asset_definition_id.clone(), account_id.clone());
                 let pswap_asset = account
                     .assets
                     .get(&pswap_asset_id)
@@ -1806,27 +2015,25 @@ pub mod isi {
 
             // check storage account to have increased base/target tokens
             if let QueryResult::GetAccount(account_result) =
-                GetAccount::build_request(storage_account_id_test.clone())
+                GetAccount::build_request(storage_account_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
-                let storage_asset_a_id = AssetId::new(
-                    asset_definition_a.id.clone(),
-                    storage_account_id_test.clone(),
-                );
-                let storage_asset_b_id = AssetId::new(
-                    asset_definition_b.id.clone(),
-                    storage_account_id_test.clone(),
+                let storage_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), storage_account_id.clone());
+                let storage_target_asset_id = AssetId::new(
+                    token_pair_id.target_asset.clone(),
+                    storage_account_id.clone(),
                 );
                 let account = account_result.account;
                 let base_asset = account
                     .assets
-                    .get(&storage_asset_a_id)
+                    .get(&storage_base_asset_id)
                     .expect("failed to get base asset");
                 let target_asset = account
                     .assets
-                    .get(&storage_asset_b_id)
+                    .get(&storage_target_asset_id)
                     .expect("failed to get target asset");
                 assert_eq!(base_asset.quantity.clone(), 5000);
                 assert_eq!(target_asset.quantity.clone(), 7000);
@@ -1944,122 +2151,39 @@ pub mod isi {
         #[test]
         fn test_xyk_pool_remove_liquidity_should_pass() {
             let mut testkit = TestKit::new();
-            let domain_name = testkit.domain_name.clone();
 
-            // get world state view and dex domain
-            let world_state_view = &mut testkit.world_state_view;
-            let domain = world_state_view
-                .read_domain(&domain_name)
-                .expect("domain not found")
-                .clone();
-
-            // initialize dex in domain
-            initialize_dex(&domain_name, testkit.dex_owner_account_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-                .expect("failed to initialize dex");
-
-            // register assets in domain
-            let asset_definition_a = AssetDefinition::new(AssetDefinitionId::new("XOR", "Company"));
-            domain
-                .register_asset(asset_definition_a.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-            let asset_definition_b = AssetDefinition::new(AssetDefinitionId::new("DOT", "Company"));
-            domain
-                .register_asset(asset_definition_b.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to register asset");
-
-            // make pswap asset definition
-            let token_pair_id = TokenPairId::new(
-                DEXId::new(&domain_name),
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
+            // prepare environment
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
+            let (xyk_pool_id, storage_account_id, pswap_asset_definition_id) =
+                testkit.xyk_pool_create(token_pair_id.clone());
+            let account_id = testkit.create_trader_account("Trader", xyk_pool_id.clone());
+            testkit.mint_asset(
+                token_pair_id.base_asset.clone(),
+                account_id.clone(),
+                5000u32,
             );
-            let asset_name = xyk_pool_pswap_asset_name(&token_pair_id);
-            let pswap_asset_definition_id = AssetDefinitionId::new(&asset_name, &domain_name);
-
-            // create account with permissions to transfer
-            let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
-            let account_id = AccountId::new("User", &domain_name);
-            let mut account = Account::with_signatory(
-                &account_id.name,
-                &account_id.domain_name,
-                key_pair.public_key.clone(),
+            testkit.mint_asset(
+                token_pair_id.target_asset.clone(),
+                account_id.clone(),
+                7000u32,
             );
-            let permission_asset_definition_id = permission_asset_definition_id();
-            let permission_asset_id = AssetId {
-                definition_id: permission_asset_definition_id.clone(),
-                account_id: account_id.clone(),
-            };
-
-            let permission_asset = Asset::with_permissions(
-                permission_asset_id.clone(),
-                &[
-                    Permission::TransferAsset(None, Some(asset_definition_a.id.clone())),
-                    Permission::TransferAsset(None, Some(asset_definition_b.id.clone())),
-                    Permission::TransferAsset(None, Some(pswap_asset_definition_id.clone())),
-                ],
-            );
-            account.assets.insert(permission_asset_id, permission_asset);
-            domain
-                .register_account(account)
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("failed to create account");
-
-            // mint tokens to account
-            let asset_a_id = AssetId::new(asset_definition_a.id.clone(), account_id.clone());
-            let asset_b_id = AssetId::new(asset_definition_b.id.clone(), account_id.clone());
-            Mint::new(5000u32, asset_a_id.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("mint asset failed");
-            Mint::new(7000u32, asset_b_id.clone())
-                .execute(testkit.root_account_id.clone(), world_state_view)
-                .expect("mint asset failed");
-
-            // register pair for exchange assets
-            create_token_pair(
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-                &domain_name,
-            )
-            .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-            .expect("create token pair failed");
-
-            let token_pair_id = TokenPairId::new(
-                DEXId::new(&domain_name),
-                asset_definition_a.id.clone(),
-                asset_definition_b.id.clone(),
-            );
-
-            // initialize xyk pool for token pair
-            create_xyk_pool(token_pair_id.clone())
-                .execute(testkit.dex_owner_account_id.clone(), world_state_view)
-                .expect("create xyk pool failed");
-
-            // replicate generated id's for checking
-            let xyk_pool_id =
-                LiquiditySourceId::new(token_pair_id.clone(), LiquiditySourceType::XYKPool);
-            let storage_account_id_test =
-                AccountId::new(&xyk_pool_storage_account_name(&token_pair_id), &domain_name);
-            let pswap_asset_definition_id_test =
-                AssetDefinitionId::new(&xyk_pool_pswap_asset_name(&token_pair_id), &domain_name);
 
             // add minted tokens to the pool from account
             xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), world_state_view)
+                .execute(account_id.clone(), &mut testkit.world_state_view)
                 .expect("add liquidity failed");
 
             // burn minted pswap to receive pool tokens back
             xyk_pool_remove_liquidity(xyk_pool_id.clone(), 4916, 0, 0)
-                .execute(account_id.clone(), world_state_view)
+                .execute(account_id.clone(), &mut testkit.world_state_view)
                 .expect("remove liquidity failed");
 
             // check state of XYK Pool
             if let QueryResult::GetTokenPair(token_pair_result) =
                 GetTokenPair::build_request(token_pair_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
                 let token_pair = token_pair_result.token_pair;
@@ -2069,11 +2193,8 @@ pub mod isi {
                     .expect("failed to find xyk pool in token pair");
 
                 let data = expect_xyk_pool_data(xyk_pool).unwrap();
-                assert_eq!(
-                    &data.pswap_asset_definition_id,
-                    &pswap_asset_definition_id_test
-                );
-                assert_eq!(&data.storage_account_id, &storage_account_id_test);
+                assert_eq!(&data.pswap_asset_definition_id, &pswap_asset_definition_id);
+                assert_eq!(&data.storage_account_id, &storage_account_id);
                 assert_eq!(data.pswap_total_supply, 1000);
                 assert_eq!(data.base_asset_reserve, 846);
                 assert_eq!(data.target_asset_reserve, 1184);
@@ -2086,22 +2207,26 @@ pub mod isi {
             if let QueryResult::GetAccount(account_result) =
                 GetAccount::build_request(account_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
+                let account_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), account_id.clone());
+                let account_target_asset_id =
+                    AssetId::new(token_pair_id.target_asset.clone(), account_id.clone());
                 let account = account_result.account;
                 let base_asset = account
                     .assets
-                    .get(&asset_a_id)
+                    .get(&account_base_asset_id)
                     .expect("failed to get base asset");
                 let target_asset = account
                     .assets
-                    .get(&asset_b_id)
+                    .get(&account_target_asset_id)
                     .expect("failed to get target asset");
                 assert_eq!(base_asset.quantity.clone(), 4154);
                 assert_eq!(target_asset.quantity.clone(), 5816);
                 let pswap_asset_id =
-                    AssetId::new(pswap_asset_definition_id_test.clone(), account_id.clone());
+                    AssetId::new(pswap_asset_definition_id.clone(), account_id.clone());
                 let pswap_asset = account
                     .assets
                     .get(&pswap_asset_id)
@@ -2113,27 +2238,25 @@ pub mod isi {
 
             // check storage account to have increased base/target tokens
             if let QueryResult::GetAccount(account_result) =
-                GetAccount::build_request(storage_account_id_test.clone())
+                GetAccount::build_request(storage_account_id.clone())
                     .query
-                    .execute(world_state_view)
+                    .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair")
             {
-                let storage_asset_a_id = AssetId::new(
-                    asset_definition_a.id.clone(),
-                    storage_account_id_test.clone(),
-                );
-                let storage_asset_b_id = AssetId::new(
-                    asset_definition_b.id.clone(),
-                    storage_account_id_test.clone(),
+                let storage_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), storage_account_id.clone());
+                let storage_target_asset_id = AssetId::new(
+                    token_pair_id.target_asset.clone(),
+                    storage_account_id.clone(),
                 );
                 let account = account_result.account;
                 let base_asset = account
                     .assets
-                    .get(&storage_asset_a_id)
+                    .get(&storage_base_asset_id)
                     .expect("failed to get base asset");
                 let target_asset = account
                     .assets
-                    .get(&storage_asset_b_id)
+                    .get(&storage_target_asset_id)
                     .expect("failed to get target asset");
                 assert_eq!(base_asset.quantity.clone(), 846);
                 assert_eq!(target_asset.quantity.clone(), 1184);
@@ -2143,7 +2266,292 @@ pub mod isi {
         }
 
         #[test]
-        fn test_xyk_pool_swap_assets_should_pass() {}
+        fn test_xyk_pool_swap_assets_in_should_pass() {
+            let mut testkit = TestKit::new();
+
+            // prepare environment
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
+            let (xyk_pool_id, storage_account_id, pswap_asset_definition_id) =
+                testkit.xyk_pool_create(token_pair_id.clone());
+            let account_id = testkit.create_trader_account("Trader", xyk_pool_id.clone());
+            testkit.mint_asset(
+                token_pair_id.base_asset.clone(),
+                account_id.clone(),
+                7000u32,
+            );
+            testkit.mint_asset(
+                token_pair_id.target_asset.clone(),
+                account_id.clone(),
+                7000u32,
+            );
+
+            // add minted tokens to the pool from account
+            xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
+                .execute(account_id.clone(), &mut testkit.world_state_view)
+                .expect("add liquidity failed");
+
+            xyk_pool_swap_exact_tokens_for_tokens(
+                vec![
+                    token_pair_id.base_asset.clone(),
+                    token_pair_id.target_asset.clone(),
+                ],
+                2000,
+                0,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("swap exact tokens for tokens failed");
+
+            // check state of XYK Pool
+            if let QueryResult::GetTokenPair(token_pair_result) =
+                GetTokenPair::build_request(token_pair_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let token_pair = token_pair_result.token_pair;
+                let xyk_pool = token_pair
+                    .liquidity_sources
+                    .get(&xyk_pool_id)
+                    .expect("failed to find xyk pool in token pair");
+
+                let data = expect_xyk_pool_data(xyk_pool).unwrap();
+                assert_eq!(data.pswap_total_supply, 5916);
+                assert_eq!(data.base_asset_reserve, 7000);
+                assert_eq!(data.target_asset_reserve, 5005);
+                assert_eq!(data.k_last, 0);
+            } else {
+                panic!("wrong enum variant returned for GetTokenPair");
+            }
+
+            // check depositing account to have decreased base/target tokens and minted liquidity tokens
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(account_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let account_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), account_id.clone());
+                let account_target_asset_id =
+                    AssetId::new(token_pair_id.target_asset.clone(), account_id.clone());
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&account_base_asset_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&account_target_asset_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 0);
+                assert_eq!(target_asset.quantity.clone(), 1995);
+                let pswap_asset_id =
+                    AssetId::new(pswap_asset_definition_id.clone(), account_id.clone());
+                let pswap_asset = account
+                    .assets
+                    .get(&pswap_asset_id)
+                    .expect("failed to get pswap asset");
+                assert_eq!(pswap_asset.quantity, 4916);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+
+            // check storage account to have increased base/target tokens
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(storage_account_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let storage_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), storage_account_id.clone());
+                let storage_target_asset_id = AssetId::new(
+                    token_pair_id.target_asset.clone(),
+                    storage_account_id.clone(),
+                );
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&storage_base_asset_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&storage_target_asset_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 7000);
+                assert_eq!(target_asset.quantity.clone(), 5005);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+        }
+
+        #[test]
+        fn test_xyk_pool_get_amount_out_should_pass() {
+            // regular input
+            let amount_out = xyk_pool_get_amount_out(2000, 5000, 5000).unwrap();
+            assert_eq!(amount_out, 1425);
+            // zero inputs
+            let amount_out = xyk_pool_get_amount_out(0, 5000, 7000).unwrap_err();
+            assert_eq!(amount_out, "insufficient input amount");
+            let amount_out = xyk_pool_get_amount_out(2000, 0, 7000).unwrap_err();
+            assert_eq!(amount_out, "insufficient liquidity");
+            let amount_out = xyk_pool_get_amount_out(2000, 5000, 0).unwrap_err();
+            assert_eq!(amount_out, "insufficient liquidity");
+            // max values
+            let amount_out = xyk_pool_get_amount_out(500000, std::u32::MAX, std::u32::MAX).unwrap();
+            assert_eq!(amount_out, 498442);
+            let amount_out =
+                xyk_pool_get_amount_out(250000, std::u32::MAX / 2, std::u32::MAX / 2).unwrap();
+            assert_eq!(amount_out, 249221);
+            let amount_out =
+                xyk_pool_get_amount_out(std::u32::MAX, std::u32::MAX, std::u32::MAX).unwrap();
+            assert_eq!(amount_out, 2144257582);
+        }
+
+        #[test]
+        fn test_xyk_pool_swap_assets_out_should_pass() {
+            let mut testkit = TestKit::new();
+
+            // prepare environment
+            testkit.initialize_dex();
+            let token_pair_id = testkit.create_token_pair("XOR", "DOT");
+            let (xyk_pool_id, storage_account_id, pswap_asset_definition_id) =
+                testkit.xyk_pool_create(token_pair_id.clone());
+            let account_id = testkit.create_trader_account("Trader", xyk_pool_id.clone());
+            testkit.mint_asset(
+                token_pair_id.base_asset.clone(),
+                account_id.clone(),
+                7000u32,
+            );
+            testkit.mint_asset(
+                token_pair_id.target_asset.clone(),
+                account_id.clone(),
+                7000u32,
+            );
+
+            // add minted tokens to the pool from account
+            xyk_pool_add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
+                .execute(account_id.clone(), &mut testkit.world_state_view)
+                .expect("add liquidity failed");
+
+            xyk_pool_swap_tokens_for_exact_tokens(
+                vec![
+                    token_pair_id.base_asset.clone(),
+                    token_pair_id.target_asset.clone(),
+                ],
+                1995,
+                std::u32::MAX,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("swap exact tokens for tokens failed");
+
+            // check state of XYK Pool
+            if let QueryResult::GetTokenPair(token_pair_result) =
+                GetTokenPair::build_request(token_pair_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let token_pair = token_pair_result.token_pair;
+                let xyk_pool = token_pair
+                    .liquidity_sources
+                    .get(&xyk_pool_id)
+                    .expect("failed to find xyk pool in token pair");
+
+                let data = expect_xyk_pool_data(xyk_pool).unwrap();
+                assert_eq!(data.pswap_total_supply, 5916);
+                assert_eq!(data.base_asset_reserve, 7000);
+                assert_eq!(data.target_asset_reserve, 5005);
+                assert_eq!(data.k_last, 0);
+            } else {
+                panic!("wrong enum variant returned for GetTokenPair");
+            }
+
+            // check depositing account to have decreased base/target tokens and minted liquidity tokens
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(account_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let account_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), account_id.clone());
+                let account_target_asset_id =
+                    AssetId::new(token_pair_id.target_asset.clone(), account_id.clone());
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&account_base_asset_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&account_target_asset_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 0);
+                assert_eq!(target_asset.quantity.clone(), 1995);
+                let pswap_asset_id =
+                    AssetId::new(pswap_asset_definition_id.clone(), account_id.clone());
+                let pswap_asset = account
+                    .assets
+                    .get(&pswap_asset_id)
+                    .expect("failed to get pswap asset");
+                assert_eq!(pswap_asset.quantity, 4916);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+
+            // check storage account to have increased base/target tokens
+            if let QueryResult::GetAccount(account_result) =
+                GetAccount::build_request(storage_account_id.clone())
+                    .query
+                    .execute(&mut testkit.world_state_view)
+                    .expect("failed to query token pair")
+            {
+                let storage_base_asset_id =
+                    AssetId::new(token_pair_id.base_asset.clone(), storage_account_id.clone());
+                let storage_target_asset_id = AssetId::new(
+                    token_pair_id.target_asset.clone(),
+                    storage_account_id.clone(),
+                );
+                let account = account_result.account;
+                let base_asset = account
+                    .assets
+                    .get(&storage_base_asset_id)
+                    .expect("failed to get base asset");
+                let target_asset = account
+                    .assets
+                    .get(&storage_target_asset_id)
+                    .expect("failed to get target asset");
+                assert_eq!(base_asset.quantity.clone(), 7000);
+                assert_eq!(target_asset.quantity.clone(), 5005);
+            } else {
+                panic!("wrong enum variant returned for GetAccount");
+            }
+        }
+
+        #[test]
+        fn test_xyk_pool_get_amount_in_should_pass() {
+            // regular input
+            let amount_out = xyk_pool_get_amount_in(2000, 5000, 5000).unwrap();
+            assert_eq!(amount_out, 3344);
+            // zero inputs
+            let amount_out = xyk_pool_get_amount_in(0, 5000, 7000).unwrap_err();
+            assert_eq!(amount_out, "insufficient output amount");
+            let amount_out = xyk_pool_get_amount_in(2000, 0, 7000).unwrap_err();
+            assert_eq!(amount_out, "insufficient liquidity");
+            let amount_out = xyk_pool_get_amount_in(2000, 5000, 0).unwrap_err();
+            assert_eq!(amount_out, "insufficient liquidity");
+            // max values
+            let amount_out = xyk_pool_get_amount_in(500000, std::u32::MAX, std::u32::MAX).unwrap();
+            assert_eq!(amount_out, 501563);
+            let amount_out =
+                xyk_pool_get_amount_in(250000, std::u32::MAX / 2, std::u32::MAX / 2).unwrap();
+            assert_eq!(amount_out, 250782);
+            let amount_out =
+                xyk_pool_get_amount_in(std::u32::MAX, std::u32::MAX, std::u32::MAX).unwrap_err();
+            assert_eq!(amount_out, "can't withdraw full reserve");
+        }
     }
 }
 

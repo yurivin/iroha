@@ -197,8 +197,12 @@ pub mod util {
     use super::*;
 
     pub fn public_key_from_str(input: &str) -> Result<PublicKey, String> {
-        let public_key: PublicKey = serde_json::from_str(&format!("{{\"inner\":{}}}", input))
-            .map_err(|e| format!("Failed to parse public key: {}", e))?;
-        Ok(public_key)
+        Ok(serde_json::from_str(&format!("{{\"inner\":{}}}", input))
+            .map_err(|e| format!("Failed to parse public key: {}", e))?)
+    }
+
+    pub fn string_array_from_str(input: &str) -> Result<Vec<String>, String> {
+        Ok(serde_json::from_str(input)
+            .map_err(|e| format!("Failed to parse string array: {}", e))?)
     }
 }
