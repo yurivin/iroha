@@ -63,7 +63,7 @@ async fn main() {
     check_response_assets(&response, 100);
 
     let user_account_id = AccountId::new("root".into(), "global");
-    let get_user_account = by_id(user_account_id);
+    let get_user_account = by_id(user_account_id.clone());
     let response = iroha_client
         .request(&get_user_account)
         .await
@@ -84,7 +84,7 @@ async fn main() {
 
     let balance = api
         .get_storage_by_key_hash::<AccountData>(xor_storage_key.clone(), None)
-        .map(|x| x.free / 1000)
+        .map(|x| x.free)
         .unwrap_or(0);
     println!(
         "[BRIDGE TEST] root@global account balance on Substrate is: {} XOR",
@@ -119,8 +119,8 @@ async fn main() {
     check_response_assets(&response, 0);
 
     let balance = api
-        .get_storage_by_key_hash::<AccountData>(xor_storage_key, None)
-        .map(|x| x.free / 1000)
+        .get_storage_by_key_hash::<AccountData>(xor_storage_key.clone(), None)
+        .map(|x| x.free)
         .unwrap();
     println!(
         "[BRIDGE TEST] root@global account balance on Substrate is: {} XOR",
@@ -143,8 +143,9 @@ async fn main() {
         api.clone(),
         "TemplateModule",
         "request_transfer",
-        substrate_acc,
-        amount * 1000,
+        //substrate_acc,
+        user_account_id.clone(),
+        amount,
         0u8
     );
     let tx_hash = api
@@ -162,6 +163,16 @@ async fn main() {
         .await
         .expect("Failed to send request.");
     check_response_assets(&response, 100);
+
+    let balance = api
+        .get_storage_by_key_hash::<AccountData>(xor_storage_key.clone(), None)
+        .map(|x| x.free)
+        .unwrap();
+    println!(
+        "[BRIDGE TEST] root@global account balance on Substrate is: {} XOR",
+        balance
+    );
+    assert_eq!(balance, 0);
 
     println!("[BRIDGE TEST] Test passed!");
 }

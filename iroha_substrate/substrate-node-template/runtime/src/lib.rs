@@ -193,7 +193,7 @@ impl pallet_timestamp::Trait for Runtime {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: u128 = 500;
+    pub const ExistentialDeposit: u128 = 0;
     pub const TransferFee: u128 = 0;
     pub const CreationFee: u128 = 0;
 }
@@ -260,7 +260,7 @@ impl pallet_balances::Trait<pallet_balances::Instance1> for Runtime {
     >;
 }
 
-impl collateral::Trait for Runtime {
+impl treasury::Trait for Runtime {
     type Event = Event;
     type XOR = pallet_balances::Module<Runtime, pallet_balances::Instance1>;
 }
@@ -352,8 +352,8 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment::{Module, Storage},
         // The Recipe Pallets
         XOR: pallet_balances::<Instance1>::{Module, Call, Storage, Config<T>, Event<T>},
-        Collateral: collateral::{Module, Call, Storage, Event<T>},
-        TemplateModule: template::{Module, Call, Storage, Event<T>, ValidateUnsigned},
+        Treasury: treasury::{Module, Call, Storage, Event<T>},
+        TemplateModule: template::{Module, Call, Storage, Config<T>, Event<T>},
     }
 );
 
