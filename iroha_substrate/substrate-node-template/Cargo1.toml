@@ -6,6 +6,6 @@ members = [
     'node',
     'pallets/template',
     'pallets/collateral',
-    'pallets/x-core',
+#    'pallets/x-core',
     'runtime',
 ]

@@ -98,7 +98,7 @@ use sp_runtime::{
     DeserializeOwned,
 };
 
-//fixme: make generic
+// fixme: make generic
 pub type Balance = u128;
 
 pub type AccountData = AccountDataGen<Balance>;

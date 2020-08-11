@@ -5,6 +5,117 @@ use codec::alloc::string::{String, ToString};
 use frame_support::dispatch::DispatchError;
 use sp_std::prelude::*;
 
+decl_error! {
+    pub enum Error for Module<T: Trait> {
+        // ----------
+        // BTC Errors
+        // ----------
+        AlreadyInitialized,
+        MissingBlockHeight, //not in spec
+        InvalidHeaderSize,
+        DuplicateBlock,
+        PrevBlock, // TODO: rename to self-explanatory
+        InvalidChainID,
+        LowDiff,
+        DiffTargetHeader, // TODO: rename to self-explanatory
+        MalformedTxid,
+        Confirmations,                   // TODO: rename to self-explanatory
+        InsufficientStableConfirmations, //not in spec
+        OngoingFork,                     //not in spec
+        /// Format of the proof is not correct
+        MalformedMerkleProof, // not in the spec
+        /// Format of the proof is correct but does not yield the correct merkle root
+        InvalidMerkleProof,
+        NoData,
+        Invalid,
+        Shutdown,
+        InvalidTxid,
+        InsufficientValue,
+        MalformedTransaction, // rename ERR_TX_FORMAT
+        WrongRecipient,
+        InvalidOutputFormat, // not in spec
+        InvalidOpreturn,
+        InvalidTxVersion,
+        NotOpReturn,
+        UnknownErrorcode,     // not in spec
+        ForkIdNotFound,       // not in spec
+        BlockNotFound,        // not in spec
+        AlreadyReported,      // not in spec
+        UnauthorizedRelayer,  // not in spec
+        ChainCounterOverflow, // not in spec
+        BlockHeightOverflow,  // not in spec
+        ChainsUnderflow,      // not in spec
+        /// Reached EOS without finishing to parse bytes
+        EOS,
+        /// Malformed header
+        MalformedHeader,
+        /// Format of the BIP141 witness transaction output is invalid
+        MalformedWitnessOutput,
+        // Format of the P2PKH transaction output is invalid
+        MalformedP2PKHOutput,
+        // Format of the P2SH transaction output is invalid
+        MalformedP2SHOutput,
+        /// Format of the OP_RETURN transaction output is invalid
+        MalformedOpReturnOutput,
+        // Output does not match format of supported output types (Witness, P2PKH, P2SH)
+        UnsupportedOutputFormat,
+        // Input does not match format of supported input types (Witness, P2PKH, P2SH)
+        UnsupportedInputFormat,
+        /// There are no NO_DATA blocks in this BlockChain
+        NoDataEmpty, // not in spec
+        // -------------
+        // XClaim Errors
+        // -------------
+        CancelAcceptedRequest,
+        InvalidReplaceID,
+        ReplacePeriodExpired,
+        UnauthorizedVault,
+        ReplacePeriodNotExpired,
+        InsufficientTokensComitted,
+        InvalidVaultID,
+        InvalidAmount,
+        InvalidTimeout,
+        MissingExchangeRate,
+        InvalidOracleSource,
+        InsufficientFunds,
+        InsufficientLockedFunds,
+        InsufficientCollateralAvailable,
+        VaultNotFound,
+        VaultBanned,
+        VaultOverAuctionThreshold,
+        CollateralBelowSecureThreshold,
+        /// Returned if the collateral amount to register a vault was too low
+        InsuficientVaultCollateralAmount,
+        // FIXME: ERR_MIN_AMOUNT in spec
+        /// Returned if a vault tries to register while already being registered
+        VaultAlreadyRegistered,
+        InsufficientCollateral,
+        ExceedingVaultLimit,
+        IssueIdNotFound,
+        CommitPeriodExpired,
+        UnauthorizedUser,
+        TimeNotExpired,
+        IssueCompleted,
+        InsufficientTokensCommitted,
+        AmountExceedsUserBalance,
+        AmountExceedsVaultBalance,
+        RedeemIdNotFound,
+        RedeemPeriodExpired,
+        RedeemPeriodNotExpired,
+
+        /// Parachain Status Errors (Security module)
+        ParachainNotRunning,
+        ParachainShutdown,
+        ParachainNotRunningOrLiquidation,
+        ParachainOracleOfflineError,
+        ParachainLiquidationError,
+        /// use only for errors which means something
+        /// going very wrong and which do not match any other error
+        RuntimeError,
+    }
+}
+
+/*
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Error {
     // ----------
@@ -232,3 +343,4 @@ impl From<Error> for DispatchError {
 
 pub type Result<T> = sp_std::result::Result<T, Error>;
 pub type UnitResult = Result<()>;
+*/

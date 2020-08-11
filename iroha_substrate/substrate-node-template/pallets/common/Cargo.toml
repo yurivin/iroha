@@ -1,5 +1,5 @@
 [package]
-name = "x-core"
+name = "common"
 version = "2.0.0-rc.4"
 authors = ["Interlay Ltd"]
 edition = "2018"

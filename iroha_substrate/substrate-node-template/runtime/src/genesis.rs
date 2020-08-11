@@ -1,7 +1,7 @@
 //! Helper module to build a genesis configuration for the Offchain Worker
 
 use super::{
-    AccountId, BalancesConfig, GenesisConfig, Signature, SudoConfig, SystemConfig, XORConfig,
+    AccountId, BalancesConfig, GenesisConfig, Signature, SudoConfig, TemplateModuleConfig, SystemConfig, XORConfig,
     WASM_BINARY,
 };
 use sp_core::{crypto::AccountId32, ecdsa, ed25519, sr25519, Pair};
@@ -49,8 +49,7 @@ pub fn dev_genesis() -> GenesisConfig {
         ],
     )
 }
-//0x00000000000000001000000000000000
-//0x00000000000000001000000000000000
+
 /// Helper function to build a genesis configuration
 pub fn testnet_genesis(root_key: AccountId, endowed_accounts: Vec<AccountId>) -> GenesisConfig {
     GenesisConfig {
@@ -71,10 +70,8 @@ pub fn testnet_genesis(root_key: AccountId, endowed_accounts: Vec<AccountId>) ->
                         67, 8, 115, 247, 189, 204, 26, 181, 226, 232, 81, 123, 12, 81, 120,
                     ])
                 })
-                .inspect(|x| {
-                    dbg!(x);
-                })
-                .map(|k| (k, 1 << 60))
+                // .map(|k| (k, 1 << 60))
+                .map(|k| (k, 0))
                 .collect(),
         }),
         pallet_balances: Some(BalancesConfig {
@@ -85,5 +82,6 @@ pub fn testnet_genesis(root_key: AccountId, endowed_accounts: Vec<AccountId>) ->
                 .collect(),
         }),
         pallet_sudo: Some(SudoConfig { key: root_key }),
+        template: Some(TemplateModuleConfig { authorities: endowed_accounts.clone() }),
     }
 }
