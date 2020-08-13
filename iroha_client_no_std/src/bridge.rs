@@ -287,7 +287,7 @@ pub mod isi {
     /// the external asset to the recipient.
     pub fn handle_incoming_transfer(
         bridge_definition_id: &<BridgeDefinition as Identifiable>::Id,
-        external_asset_id: &<ExternalAsset as Identifiable>::Id,
+        asset_defintion_id: &<AssetDefinition as Identifiable>::Id,
         quantity: u32,
         big_quantity: u128,
         recipient: <Account as Identifiable>::Id,
@@ -296,7 +296,7 @@ pub mod isi {
         let domain_id = &bridge_definition_id.name;
         let account_id = AccountId::new(BRIDGE_ACCOUNT_NAME, domain_id);
         let asset_id = AssetId {
-            definition_id: AssetDefinitionId::new(&external_asset_id, &bridge_definition_id.name),
+            definition_id: asset_defintion_id.clone(),
             account_id: recipient,
         };
         Instruction::Sequence(vec![
@@ -317,7 +317,7 @@ pub mod isi {
     /// received asset.
     pub fn handle_outgoing_transfer(
         bridge_definition_id: &<BridgeDefinition as Identifiable>::Id,
-        external_asset_id: &<ExternalAsset as Identifiable>::Id,
+        asset_definition_id: &<AssetDefinition as Identifiable>::Id,
         quantity: u32,
         big_quantity: u128,
         transaction: &ExternalTransaction,
@@ -325,7 +325,7 @@ pub mod isi {
         let domain_id = &bridge_definition_id.name;
         let account_id = AccountId::new(BRIDGE_ACCOUNT_NAME, domain_id);
         let asset_id = AssetId {
-            definition_id: AssetDefinitionId::new(&external_asset_id, &bridge_definition_id.name),
+            definition_id: asset_definition_id.clone(),
             account_id: account_id.clone(),
         };
         Instruction::Sequence(vec![
