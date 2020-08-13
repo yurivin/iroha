@@ -110,67 +110,6 @@ We need to know quantity so we skip this argument and replace `update asset add`
 ./iroha_client_cli asset get --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" 
 ```
 
-### DEX Management
-
-Extension of Iroha allows to introduce Decentralized Exchanges functionality. Exchanges can be done between assets in same domain.
-
-Firstly the DEX needs be initialized for the domain:
-```bash
-./iroha_client_cli dex initialize --domain="Company" --owner_account_id="Some Owner@Company" --key=""
-```
-
-To see all active DEX in network use:
-```bash
-./iroha client_cli dex list
-```
-
-Next, exchange pairs could be added/removed/viewed in the DEX:
-```bash
-./iroha_client_cli dex token_pair create --domain="Company" --base="XOR" --target="DOT"
-./iroha_client_cli dex token_pair remove --domain="Company" --base="XOR" --target="DOT"
-./iroha_client_cli dex token_pair list --domain="Company"
-```
-
-#### `AddLiquidityToXYKPool`/`RemoveLiquidityFromXYKPool` Use Case
-
-```bash
-## WITH ROOT IDENTITY
-# Initial setup
-./iroha_client_cli domain add --name="Soramitsu"
-./iroha_client_cli account register --domain="Soramitsu" --name="DEX Owner" --key="<DEX OWNER ACCOUNT PUBLIC KEY>" 
-./iroha_client_cli dex initialize --domain="Soramitsu" --owner_account_id="DEX Owner@Soramitsu"
-./iroha_client_cli dex list
-./iroha_client_cli dex get --domain="Soramitsu"
-
-# Setup Token Pair
-./iroha_client_cli asset register --domain="Soramitsu" --name="XOR"
-./iroha_client_cli asset register --domain="Soramitsu" --name="DOT"
-./iroha_client_cli dex token_pair --domain="Soramitsu" create --base="XOR" --target="DOT"
-./iroha_client_cli dex token_pair --domain="Soramitsu" list
-./iroha_client_cli dex token_pair --domain="Soramitsu" get --base="XOR" --target="DOT"
-
-# Setup XYK Pool for Token Pair
-./iroha_client_cli dex xyk_pool --domain="Soramitsu" --base="XOR" --target="DOT" create
-
-# Setup user with some assets
-./iroha_client_cli account register --domain="Soramitsu" --name="User" --key="<USER PUBLIC KEY>"
-./iroha_client_cli dex xyk_pool --domain="Soramitsu" --base="XOR" --target="DOT" activate_account --account="User"
-./iroha_client_cli asset mint --account_id="User@Soramitsu" --id="XOR#Soramitsu" --quantity="5000"
-./iroha_client_cli asset mint --account_id="User@Soramitsu" --id="DOT#Soramitsu" --quantity="10000"
-
-## WITH USER IDENTITY
-./iroha_client_cli dex xyk_pool --domain="Soramitsu" --base="XOR" --target="DOT" add_liquidity --base_amount="5000" --target_amount="10000"
-./iroha_client_cli dex token_pair --domain="Soramitsu" get --base="XOR" --target="DOT"
-
-./iroha_client_cli dex xyk_pool --domain="Soramitsu" --base="XOR" --target="DOT" remove_liquidity --liquidity="2000"
-./iroha_client_cli dex token_pair --domain="Soramitsu" get --base="XOR" --target="DOT"
-
-# Account queries to validate asset quantities in accounts
-./iroha_client_cli account get --domain="Soramitsu" --name="User"
-./iroha_client_cli account get --domain="Soramitsu" --name="STORE XYK XOR#Soramitsu-DOT#Soramitsu"
-```
-
-
 ### Want to help us develop Iroha?
 
 That's great! 
