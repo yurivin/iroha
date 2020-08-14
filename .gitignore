@@ -1,3 +1,7 @@
+**/target/
+**/blocks/
+**/*.rs.bk
+
 config/__pycahe__
 **/__pycache__/*
 __pycache__/*
@@ -32,7 +36,6 @@ iroha.conf
 peers.list
 cmake-build*
 
-cmake-build*
 .gtm
 /.gtm/
 

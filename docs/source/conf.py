@@ -1,7 +1,10 @@
 import os
 import sys
-import sphinx_rtd_theme
+import alabaster
 import yaml
+from sphinx.highlighting import lexers
+from pygments_lexer_solidity import SolidityLexer
+lexers['solidity'] = SolidityLexer()
 
 sys.path.insert(0, os.path.abspath('.'))
 
@@ -21,15 +24,29 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
-    'm2r'
+    'sphinx_markdown_tables',
+    'recommonmark',
+    'alabaster',
+    'sphinxcontrib.plantuml'
 ]
 
+html_static_path = ['_static']
+
+html_context = {
+    'css_files': [
+        '_static/theme_overrides.css',  # override wide tables in RTD theme
+        ],
+     }
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-source_suffix = ['.rst', '.md']
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.txt': 'markdown',
+    '.md': 'markdown',
+}
 
 # The master toctree document.
 master_doc = 'index'
@@ -53,8 +70,8 @@ gettext_compact = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'alabaster'
+html_theme_path = [alabaster.get_path()]
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -63,10 +80,19 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # refs: http://alabaster.readthedocs.io/en/latest/installation.html#sidebars
 html_sidebars = {
     '**': [
-        'relations.html',  # needs 'show_related': True theme option to display
+        'about.html',
+        'navigation.html',
+        'relations.html',
         'searchbox.html',
     ]
 }
+html_theme_options = {
+    'fixed_sidebar': True,
+
+}
+
+# Additional files
+html_extra_path = ['_extra']
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -94,7 +120,7 @@ latex_elements = {
     # 'figure_align': 'htbp',
 }
 
-# Read variables for 
+# Read variables for
 # common settings and locale:
 with open('common.yaml', 'r') as stream:
     common = yaml.load(stream)
@@ -103,7 +129,7 @@ with open('common.yaml', 'r') as stream:
     description = common.get('description')
     copyright = common.get('copyright')
     author = common.get('author')
-with open('locale.yaml', 'r') as stream:    
+with open('locale.yaml', 'r') as stream:
     locale = yaml.load(stream)
     language = locale.get('language')
     if locale.get('locale_dirs'):
@@ -140,3 +166,6 @@ texinfo_documents = [
      author, project, description,
      'C++'),
 ]
+
+
+# -- Options for iroha_permissions extension ------------------------------
