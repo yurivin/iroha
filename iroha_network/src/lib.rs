@@ -5,6 +5,7 @@ use async_std::{
     net::{TcpListener, TcpStream},
     prelude::*,
     sync::RwLock,
+    task::{Context, Poll},
 };
 use iroha_derive::{log, Io};
 use parity_scale_codec::{Decode, Encode};
@@ -12,10 +13,13 @@ use std::{
     convert::{TryFrom, TryInto},
     error::Error,
     future::Future,
+    io::prelude::*,
+    net::TcpStream as SyncTcpStream,
+    pin::Pin,
     sync::Arc,
 };
 
-const BUFFER_SIZE: usize = 2048;
+const BUFFER_SIZE: usize = 4096;
 
 pub type State<T> = Arc<RwLock<T>>;
 pub trait AsyncStream: async_std::io::Read + async_std::io::Write + Send + Unpin {}
@@ -96,7 +100,7 @@ impl Network {
         Ok(())
     }
 
-    /// Helper function to call inside `listen_async` `handler` function to parse and send response.
+    /// Helper function to call inside `listen` `handler` function to parse and send response.
     /// The `handler` specified here will need to generate `Response` from `Request`.
     /// See `listen_async` for the description of the `state`.
     pub async fn handle_message_async<H, F, S>(
@@ -125,6 +129,58 @@ impl Network {
         stream.flush().await.map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub async fn connect(&self) -> Result<Connection, String> {
+        Ok(Connection::new(
+            SyncTcpStream::connect(&self.server_url).map_err(|e| e.to_string())?,
+        ))
+    }
+}
+
+pub struct Connection {
+    tcp_stream: SyncTcpStream,
+}
+
+/// `Receipt` should be used by [Consumers](https://github.com/cloudevents/spec/blob/v1.0/spec.md#consumer)
+/// to notify [Source](https://github.com/cloudevents/spec/blob/v1.0/spec.md#source) about
+/// [Message](https://github.com/cloudevents/spec/blob/v1.0/spec.md#message) consumption.
+#[derive(Io, Encode, Decode)]
+pub enum Receipt {
+    Ok,
+}
+
+impl Connection {
+    fn new(tcp_stream: SyncTcpStream) -> Self {
+        Connection { tcp_stream }
+    }
+}
+
+impl Stream for Connection {
+    type Item = Vec<u8>;
+
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut buffer = [0u8; BUFFER_SIZE];
+        match self.tcp_stream.read(&mut buffer) {
+            Ok(read_size) => {
+                dbg!(&read_size);
+                let bytes: Vec<u8> = buffer[..read_size].to_vec();
+                let receipt: Vec<u8> = Receipt::Ok.into();
+                if let Err(e) = self.tcp_stream.write_all(&receipt) {
+                    eprintln!("Write receipt to stream failed: {}", e);
+                    return Poll::Ready(None);
+                }
+                if let Err(e) = self.tcp_stream.flush() {
+                    eprintln!("Flush stream with receipt failed: {}", e);
+                    return Poll::Ready(None);
+                }
+                Poll::Ready(Some(bytes))
+            }
+            Err(e) => {
+                eprintln!("Read data from stream failed: {}", e);
+                Poll::Ready(None)
+            }
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -139,14 +195,14 @@ impl Request {
     /// # Arguments
     ///
     /// * uri_path - corresponds to [URI syntax](https://en.wikipedia.org/wiki/Uniform_Resource_Identifier)
-    /// `path` part (e.g. "/commands")
+    /// `path` part (e.g. "/metrics")
     /// * payload - the message in bytes
     ///
     /// # Examples
     /// ```
     /// use iroha_network::prelude::*;
     ///
-    /// let request = Request::new("/commands".to_string(), "some_message".to_string().into_bytes());
+    /// let request = Request::new("/metrics".to_string(), "some_message".to_string().into_bytes());
     /// ```
     pub fn new(uri_path: String, payload: Vec<u8>) -> Request {
         Request { uri_path, payload }
@@ -206,7 +262,7 @@ pub mod prelude {
     //! Re-exports important traits and types. Meant to be glob imported when using `iroha_network`.
 
     #[doc(inline)]
-    pub use crate::{AsyncStream, Network, Request, Response, State};
+    pub use crate::{AsyncStream, Connection, Network, Receipt, Request, Response, State};
 }
 
 #[cfg(test)]
@@ -225,21 +281,21 @@ mod tests {
     #[test]
     fn request_correctly_built() {
         let request = Request {
-            uri_path: "/commands".to_string(),
-            payload: b"some_command".to_vec(),
+            uri_path: "/instructions".to_string(),
+            payload: b"some_instruction".to_vec(),
         };
         let bytes: Vec<u8> = request.into();
-        assert_eq!(b"/commands\r\nsome_command".to_vec(), bytes)
+        assert_eq!(b"/instructions\r\nsome_instruction".to_vec(), bytes)
     }
 
     #[test]
     fn request_correctly_parsed() {
         let request = Request {
-            uri_path: "/commands".to_string(),
-            payload: b"some_command".to_vec(),
+            uri_path: "/instructions".to_string(),
+            payload: b"some_instruction".to_vec(),
         };
         assert_eq!(
-            Request::try_from(b"/commands\r\nsome_command".to_vec()).unwrap(),
+            Request::try_from(b"/instructions\r\nsome_instruction".to_vec()).unwrap(),
             request
         )
     }
@@ -250,7 +306,7 @@ mod tests {
             _state: State<S>,
             _request: Request,
         ) -> Result<Response, String> {
-            Ok(Response::Ok("pong".as_bytes().to_vec()))
+            Ok(Response::Ok(b"pong".to_vec()))
         };
 
         async fn handle_connection<S>(
@@ -268,7 +324,7 @@ mod tests {
             .await
             .expect("Failed to send request to.")
         {
-            Response::Ok(payload) => assert_eq!(payload, "pong".as_bytes()),
+            Response::Ok(payload) => assert_eq!(payload, b"pong"),
             _ => panic!("Response should be ok."),
         }
     }
@@ -283,7 +339,7 @@ mod tests {
         ) -> Result<Response, String> {
             let mut data = state.write().await;
             *data += 1;
-            Ok(Response::Ok("pong".as_bytes().to_vec()))
+            Ok(Response::Ok(b"pong".to_vec()))
         };
         async fn handle_connection(
             state: State<usize>,
@@ -300,7 +356,7 @@ mod tests {
             .await
             .expect("Failed to send request to.")
         {
-            Response::Ok(payload) => assert_eq!(payload, "pong".as_bytes()),
+            Response::Ok(payload) => assert_eq!(payload, b"pong"),
             _ => panic!("Response should be ok."),
         }
         std::thread::sleep(std::time::Duration::from_millis(200));

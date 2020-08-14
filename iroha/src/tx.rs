@@ -2,7 +2,7 @@
 //!
 //! `RequestedTransaction` is the start of the Transaction lifecycle.
 
-use crate::prelude::*;
+use crate::{crypto::KeyPair, prelude::*};
 use iroha_derive::Io;
 use parity_scale_codec::{Decode, Encode};
 use std::time::SystemTime;
@@ -81,21 +81,29 @@ impl AcceptedTransaction {
     /// Sign transaction with the provided key pair.
     ///
     /// Returns `Ok(SignedTransaction)` if succeeded and `Err(String)` if failed.
-    pub fn sign(
-        self,
-        public_key: &PublicKey,
-        private_key: &PrivateKey,
-    ) -> Result<SignedTransaction, String> {
+    pub fn sign(self, key_pair: &KeyPair) -> Result<SignedTransaction, String> {
         let mut signatures = self.signatures.clone();
-        signatures.push(Signature::new(
-            *public_key,
-            &Vec::from(&self.payload),
-            private_key,
-        )?);
+        signatures.push(Signature::new(key_pair.clone(), &Vec::from(&self.payload))?);
         Ok(SignedTransaction {
             payload: self.payload,
             signatures,
         })
+    }
+
+    /// Calculate transaction `Hash`.
+    pub fn hash(&self) -> Hash {
+        use ursa::blake2::{
+            digest::{Input, VariableOutput},
+            VarBlake2b,
+        };
+        let bytes: Vec<u8> = self.payload.clone().into();
+        let vec_hash = VarBlake2b::new(32)
+            .expect("Failed to initialize variable size hash")
+            .chain(bytes)
+            .vec_result();
+        let mut hash = [0; 32];
+        hash.copy_from_slice(&vec_hash);
+        hash
     }
 }
 
@@ -118,6 +126,7 @@ impl SignedTransaction {
         })
     }
 
+    // TODO: comment that it should use a clone
     /// Move transaction lifecycle forward by checking an ability to apply instructions to the
     /// `WorldStateView`.
     ///
@@ -127,7 +136,7 @@ impl SignedTransaction {
         world_state_view: &mut WorldStateView,
     ) -> Result<ValidTransaction, String> {
         for instruction in &self.payload.instructions {
-            instruction.execute(world_state_view)?;
+            instruction.execute(self.payload.account_id.clone(), world_state_view)?;
         }
         Ok(ValidTransaction {
             payload: self.payload,
@@ -160,10 +169,28 @@ pub struct ValidTransaction {
 }
 
 impl ValidTransaction {
+    // TODO: comment that it should use a clone
+    /// Move transaction lifecycle forward by checking an ability to apply instructions to the
+    /// `WorldStateView`.
+    ///
+    /// Returns `Ok(ValidTransaction)` if succeeded and `Err(String)` if failed.
+    pub fn validate(
+        self,
+        world_state_view: &mut WorldStateView,
+    ) -> Result<ValidTransaction, String> {
+        for instruction in &self.payload.instructions {
+            instruction.execute(self.payload.account_id.clone(), world_state_view)?;
+        }
+        Ok(ValidTransaction {
+            payload: self.payload,
+            signatures: self.signatures,
+        })
+    }
+
     /// Apply instructions to the `WorldStateView`.
     pub fn proceed(&self, world_state_view: &mut WorldStateView) -> Result<(), String> {
         for instruction in &self.payload.instructions {
-            if let Err(e) = instruction.execute(world_state_view) {
+            if let Err(e) = instruction.execute(self.payload.account_id.clone(), world_state_view) {
                 eprintln!("Failed to invoke instruction on WSV: {}", e);
             }
         }
@@ -203,6 +230,17 @@ impl From<&ValidTransaction> for RequestedTransaction {
         RequestedTransaction {
             payload: transaction.payload,
             signatures: transaction.signatures,
+        }
+    }
+}
+
+mod event {
+    use super::*;
+    use crate::event::{Entity, Occurrence};
+
+    impl From<&RequestedTransaction> for Occurrence {
+        fn from(transaction: &RequestedTransaction) -> Occurrence {
+            Occurrence::Created(Entity::Transaction(transaction.into()))
         }
     }
 }

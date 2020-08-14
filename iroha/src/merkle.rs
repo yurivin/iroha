@@ -153,7 +153,7 @@ impl<'a> IntoIterator for &'a MerkleTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::peer::PeerId;
+    use crate::{crypto::KeyPair, peer::PeerId};
 
     #[test]
     fn tree_with_two_layers_should_reach_all_nodes() {
@@ -169,18 +169,19 @@ mod tests {
 
     #[test]
     fn four_blocks_should_built_seven_nodes() {
-        let block = PendingBlock::new(Vec::new())
+        let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+        let block = PendingBlock::new(Vec::new(), &key_pair)
+            .expect("Failed to create a block.")
             .chain_first()
-            .sign(&[0; 32], &[0; 64])
-            .expect("Failed to sign blocks.")
             .validate(&WorldStateView::new(Peer::new(
                 PeerId {
                     address: "127.0.0.1:8080".to_string(),
-                    public_key: [0; 32],
+                    public_key: key_pair.public_key,
                 },
                 &Vec::new(),
             )))
-            .expect("Failed to validate block.");
+            .sign(&key_pair)
+            .expect("Failed to sign blocks.");
         let blocks = [&block, &block, &block, &block];
         let mut merkle_tree = MerkleTree::new();
         merkle_tree.build(&blocks);
@@ -189,18 +190,19 @@ mod tests {
 
     #[test]
     fn three_blocks_should_built_seven_nodes() {
-        let block = PendingBlock::new(Vec::new())
+        let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
+        let block = PendingBlock::new(Vec::new(), &key_pair)
+            .expect("Failed to create a block.")
             .chain_first()
-            .sign(&[0; 32], &[0; 64])
-            .expect("Failed to sign blocks.")
             .validate(&WorldStateView::new(Peer::new(
                 PeerId {
                     address: "127.0.0.1:8080".to_string(),
-                    public_key: [0; 32],
+                    public_key: key_pair.public_key,
                 },
                 &Vec::new(),
             )))
-            .expect("Failed to validate block.");
+            .sign(&key_pair)
+            .expect("Failed to sign blocks.");
         let blocks = [&block, &block, &block, &block];
         let mut merkle_tree = MerkleTree::new();
         merkle_tree.build(&blocks);

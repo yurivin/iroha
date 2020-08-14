@@ -3,12 +3,13 @@
 use crate::{isi::prelude::*, prelude::*};
 use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
-use std::collections::{HashMap, HashSet};
-
-type PublicKey = [u8; 32];
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Peer's identification.
-#[derive(Encode, Decode, PartialEq, Eq, Debug, Clone, Hash, Io)]
+#[derive(
+    Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Io, Default, Deserialize,
+)]
 pub struct PeerId {
     /// Address of the Peer's entrypoint.
     pub address: String,
@@ -16,21 +17,58 @@ pub struct PeerId {
     pub public_key: PublicKey,
 }
 
+impl PeerId {
+    /// Default `PeerId` constructor.
+    pub fn new(address: &str, public_key: &PublicKey) -> Self {
+        PeerId {
+            address: address.to_string(),
+            public_key: *public_key,
+        }
+    }
+}
+
 /// Peer represents currently running Iroha instance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Encode, Decode, Io)]
 pub struct Peer {
-    id: PeerId,
+    /// Peer Identification.
+    pub id: PeerId,
     /// All discovered Peers' Ids.
-    pub peers: HashSet<PeerId>,
+    pub peers: BTreeSet<PeerId>,
     /// Address to listen to.
     pub listen_address: String,
     /// Registered domains.
-    pub domains: HashMap<String, Domain>,
+    pub domains: BTreeMap<String, Domain>,
+    /// Events Listeners.
+    pub listeners: Vec<Instruction>,
 }
 
 impl Peer {
     /// Default `Peer` constructor.
     pub fn new(id: PeerId, trusted_peers: &[PeerId]) -> Peer {
+        Self::with_domains(id, trusted_peers, BTreeMap::new())
+    }
+
+    /// `Peer` constructor with a predefined domains.
+    pub fn with_domains(
+        id: PeerId,
+        trusted_peers: &[PeerId],
+        domains: BTreeMap<<Domain as Identifiable>::Id, Domain>,
+    ) -> Peer {
+        Peer {
+            id: id.clone(),
+            peers: trusted_peers.iter().cloned().collect(),
+            listen_address: id.address,
+            domains,
+            listeners: Vec::new(),
+        }
+    }
+
+    /// `Peer` constructor with a predefined listeners.
+    pub fn with_listeners(
+        id: PeerId,
+        trusted_peers: &[PeerId],
+        listeners: Vec<Instruction>,
+    ) -> Peer {
         Peer {
             id: id.clone(),
             peers: trusted_peers
@@ -39,7 +77,28 @@ impl Peer {
                 .cloned()
                 .collect(),
             listen_address: id.address,
-            domains: HashMap::new(),
+            domains: BTreeMap::new(),
+            listeners,
+        }
+    }
+
+    /// `Peer` constructor with a predefined domains and listeners.
+    pub fn with_domains_and_listeners(
+        id: PeerId,
+        trusted_peers: &[PeerId],
+        domains: BTreeMap<<Domain as Identifiable>::Id, Domain>,
+        listeners: Vec<Instruction>,
+    ) -> Peer {
+        Peer {
+            id: id.clone(),
+            peers: trusted_peers
+                .iter()
+                .filter(|peer_id| id.address != peer_id.address)
+                .cloned()
+                .collect(),
+            listen_address: id.address,
+            domains,
+            listeners,
         }
     }
 
@@ -49,6 +108,17 @@ impl Peer {
             object,
             destination_id: self.id.clone(),
         }
+    }
+
+    /// Add new Listener to the World.
+    pub fn add_listener(&mut self, listener: Instruction) {
+        self.listeners.push(listener);
+    }
+
+    /// This method should be used to generate Peer's authority.
+    /// For example if you need to execute some Iroha Special Instructions.
+    pub fn authority(&self) -> <Account as Identifiable>::Id {
+        AccountId::new("root", "global")
     }
 }
 
@@ -61,6 +131,7 @@ impl Identifiable for Peer {
 /// and the `From/Into` implementations to convert `PeerInstruction` variants into generic ISI.
 pub mod isi {
     use super::*;
+    use crate::permission::isi::PermissionInstruction;
     use std::ops::{AddAssign, Sub};
 
     /// Enumeration of all legal Peer related Instructions.
@@ -68,16 +139,37 @@ pub mod isi {
     pub enum PeerInstruction {
         /// Variant of the generic `Add` instruction for `Domain` --> `Peer`.
         AddDomain(String, PeerId),
+        /// Variant of the generic `Add` instruction for `Instruction` --> `Peer`.
+        AddListener(Box<Instruction>, PeerId),
+        /// Instruction to add a peer to the network.
+        AddPeer(PeerId),
     }
 
     impl PeerInstruction {
         /// Executes `PeerInstruction` on the given `WorldStateView`.
         /// Returns `Ok(())` if execution succeeded and `Err(String)` with error message if not.
-        pub fn execute(&self, world_state_view: &mut WorldStateView) -> Result<(), String> {
+        pub fn execute(
+            &self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
             match self {
                 PeerInstruction::AddDomain(domain_name, peer_id) => {
                     Add::new(Domain::new(domain_name.to_string()), peer_id.clone())
-                        .execute(world_state_view)
+                        .execute(authority, world_state_view)
+                }
+                PeerInstruction::AddListener(listener, peer_id) => {
+                    Add::new(*listener.clone(), peer_id.clone())
+                        .execute(authority, world_state_view)
+                }
+                PeerInstruction::AddPeer(candidate_peer) => {
+                    let peer = world_state_view.peer();
+                    if peer.peers.contains(candidate_peer) {
+                        Err("Peer is already in the peer network.".to_string())
+                    } else {
+                        peer.peers.insert(candidate_peer.clone());
+                        Ok(())
+                    }
                 }
             }
         }
@@ -90,7 +182,12 @@ pub mod isi {
     }
 
     impl Add<Peer, Domain> {
-        fn execute(self, world_state_view: &mut WorldStateView) -> Result<(), String> {
+        pub(crate) fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanAddDomain(authority).execute(world_state_view)?;
             *world_state_view.peer() += self.object;
             Ok(())
         }
@@ -111,6 +208,18 @@ pub mod isi {
         fn sub(mut self, domain: Domain) -> Self {
             self.domains.remove(&domain.name);
             self
+        }
+    }
+
+    impl Add<Peer, Instruction> {
+        fn execute(
+            self,
+            authority: <Account as Identifiable>::Id,
+            world_state_view: &mut WorldStateView,
+        ) -> Result<(), String> {
+            PermissionInstruction::CanAddListener(authority).execute(world_state_view)?;
+            world_state_view.peer().listeners.push(self.object);
+            Ok(())
         }
     }
 }

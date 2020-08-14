@@ -1,5 +1,5 @@
 use criterion::*;
-use iroha::{crypto, isi, peer::PeerId, prelude::*};
+use iroha::{isi, peer::PeerId, prelude::*};
 
 fn accept_transaction(criterion: &mut Criterion) {
     let domain_name = "domain";
@@ -7,17 +7,25 @@ fn accept_transaction(criterion: &mut Criterion) {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, [0; 32]),
+        object: Account::with_signatory(
+            account_name,
+            domain_name,
+            KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key,
+        ),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -48,17 +56,25 @@ fn sign_transaction(criterion: &mut Criterion) {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, [0; 32]),
+        object: Account::with_signatory(
+            account_name,
+            domain_name,
+            KeyPair::generate()
+                .expect("Failed to generate KeyPair.")
+                .public_key,
+        ),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -71,17 +87,14 @@ fn sign_transaction(criterion: &mut Criterion) {
     )
     .accept()
     .expect("Failed to accept transaction.");
-    let (public_key, private_key) =
-        crypto::generate_key_pair().expect("Failed to generate key pair.");
+    let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
     let mut success_count = 0;
     let mut failures_count = 0;
     criterion.bench_function("sign", |b| {
-        b.iter(
-            || match transaction.clone().sign(&public_key, &private_key) {
-                Ok(_) => success_count += 1,
-                Err(_) => failures_count += 1,
-            },
-        );
+        b.iter(|| match transaction.clone().sign(&key_pair) {
+            Ok(_) => success_count += 1,
+            Err(_) => failures_count += 1,
+        });
     });
     println!(
         "Success count: {}, Failures count: {}",
@@ -91,23 +104,22 @@ fn sign_transaction(criterion: &mut Criterion) {
 
 fn validate_transaction(criterion: &mut Criterion) {
     let domain_name = "domain";
-    let (public_key, private_key) =
-        crypto::generate_key_pair().expect("Failed to generate key pair.");
+    let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
     let create_domain = isi::Add {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, public_key),
+        object: Account::with_signatory(account_name, domain_name, key_pair.public_key),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -120,14 +132,14 @@ fn validate_transaction(criterion: &mut Criterion) {
     )
     .accept()
     .expect("Failed to accept transaction.")
-    .sign(&public_key, &private_key)
+    .sign(&key_pair)
     .expect("Failed to sign transaction.");
     let mut success_count = 0;
     let mut failures_count = 0;
     let mut world_state_view = WorldStateView::new(Peer::new(
         PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
         &Vec::new(),
     ));
@@ -147,23 +159,22 @@ fn validate_transaction(criterion: &mut Criterion) {
 
 fn chain_blocks(criterion: &mut Criterion) {
     let domain_name = "domain";
-    let (public_key, _private_key) =
-        crypto::generate_key_pair().expect("Failed to generate key pair.");
+    let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
     let create_domain = isi::Add {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, public_key),
+        object: Account::with_signatory(account_name, domain_name, key_pair.public_key),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -176,13 +187,15 @@ fn chain_blocks(criterion: &mut Criterion) {
     )
     .accept()
     .expect("Failed to accept transaction.");
-    let block = PendingBlock::new(vec![transaction]);
+    let block = PendingBlock::new(vec![transaction], &key_pair).expect("Failed to create block");
     let mut previous_block_hash = block.clone().chain_first().hash();
     let mut success_count = 0;
     criterion.bench_function("chain_block", |b| {
         b.iter(|| {
             success_count += 1;
-            let new_block = block.clone().chain(success_count, previous_block_hash);
+            let new_block = block
+                .clone()
+                .chain(success_count, previous_block_hash, 0, Vec::new());
             previous_block_hash = new_block.hash();
         });
     });
@@ -191,23 +204,22 @@ fn chain_blocks(criterion: &mut Criterion) {
 
 fn sign_blocks(criterion: &mut Criterion) {
     let domain_name = "domain";
-    let (public_key, private_key) =
-        crypto::generate_key_pair().expect("Failed to generate key pair.");
+    let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
     let create_domain = isi::Add {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, public_key),
+        object: Account::with_signatory(account_name, domain_name, key_pair.public_key),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -220,11 +232,21 @@ fn sign_blocks(criterion: &mut Criterion) {
     )
     .accept()
     .expect("Failed to accept transaction.");
-    let block = PendingBlock::new(vec![transaction]).chain_first();
+    let world_state_view = WorldStateView::new(Peer::new(
+        PeerId {
+            address: "127.0.0.1:8080".to_string(),
+            public_key: key_pair.public_key,
+        },
+        &Vec::new(),
+    ));
+    let block = PendingBlock::new(vec![transaction], &key_pair)
+        .expect("Failed to create block")
+        .chain_first()
+        .validate(&world_state_view);
     let mut success_count = 0;
     let mut failures_count = 0;
     criterion.bench_function("sign_block", |b| {
-        b.iter(|| match block.clone().sign(&public_key, &private_key) {
+        b.iter(|| match block.clone().sign(&key_pair) {
             Ok(_) => success_count += 1,
             Err(_) => failures_count += 1,
         });
@@ -237,23 +259,22 @@ fn sign_blocks(criterion: &mut Criterion) {
 
 fn validate_blocks(criterion: &mut Criterion) {
     let domain_name = "domain";
-    let (public_key, private_key) =
-        crypto::generate_key_pair().expect("Failed to generate key pair.");
+    let key_pair = KeyPair::generate().expect("Failed to generate KeyPair.");
     let create_domain = isi::Add {
         object: Domain::new(domain_name.to_string()),
         destination_id: PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
     };
     let account_name = "account";
     let create_account = isi::Register {
-        object: Account::new(account_name, domain_name, public_key),
+        object: Account::with_signatory(account_name, domain_name, key_pair.public_key),
         destination_id: String::from(domain_name),
     };
-    let asset_id = AssetId::new("xor", domain_name, account_name);
+    let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
     let create_asset = isi::Register {
-        object: Asset::new(asset_id.clone()).with_quantity(0),
+        object: AssetDefinition::new(asset_definition_id),
         destination_id: domain_name.to_string(),
     };
     let transaction = RequestedTransaction::new(
@@ -266,29 +287,19 @@ fn validate_blocks(criterion: &mut Criterion) {
     )
     .accept()
     .expect("Failed to accept transaction.");
-    let block = PendingBlock::new(vec![transaction])
-        .chain_first()
-        .sign(&public_key, &private_key)
-        .expect("Failed to sign a block.");
-    let mut world_state_view = WorldStateView::new(Peer::new(
+    let block = PendingBlock::new(vec![transaction], &key_pair)
+        .expect("Failed to create a block.")
+        .chain_first();
+    let world_state_view = WorldStateView::new(Peer::new(
         PeerId {
             address: "127.0.0.1:8080".to_string(),
-            public_key: [0; 32],
+            public_key: key_pair.public_key,
         },
         &Vec::new(),
     ));
-    let mut success_count = 0;
-    let mut failures_count = 0;
     criterion.bench_function("validate_block", |b| {
-        b.iter(|| match block.clone().validate(&mut world_state_view) {
-            Ok(_) => success_count += 1,
-            Err(_) => failures_count += 1,
-        });
+        b.iter(|| block.clone().validate(&world_state_view));
     });
-    println!(
-        "Success count: {}, Failures count: {}",
-        success_count, failures_count
-    );
 }
 
 criterion_group!(

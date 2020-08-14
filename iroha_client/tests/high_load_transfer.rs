@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests {
     use async_std::task;
-    use iroha::{isi, prelude::*};
-    use iroha_client::client::{self, Client};
+    use iroha::{config::Configuration, isi, prelude::*};
+    use iroha_client::{
+        client::{self, Client},
+        config::Configuration as ClientConfiguration,
+    };
     use std::thread;
     use tempfile::TempDir;
 
@@ -12,14 +15,17 @@ mod tests {
     //TODO: use cucumber to write `gherkin` instead of code.
     async fn client_can_transfer_asset_to_another_account_x100() {
         // Given
-        thread::spawn(|| create_and_start_iroha());
+        thread::spawn(create_and_start_iroha);
         thread::sleep(std::time::Duration::from_millis(200));
         let configuration =
             Configuration::from_path(CONFIGURATION_PATH).expect("Failed to load configuration.");
         let domain_name = "domain";
         let create_domain = isi::Add {
             object: Domain::new(domain_name.to_string()),
-            destination_id: configuration.peer_id.clone(),
+            destination_id: PeerId::new(
+                &configuration.torii_configuration.torii_url,
+                &configuration.public_key,
+            ),
         };
         let account1_name = "account1";
         let account2_name = "account2";
@@ -27,24 +33,29 @@ mod tests {
         let account2_id = AccountId::new(account2_name, domain_name);
         let (public_key, _) = configuration.key_pair();
         let create_account1 = isi::Register {
-            object: Account::new(account1_name, domain_name, public_key),
+            object: Account::with_signatory(account1_name, domain_name, public_key),
             destination_id: String::from(domain_name),
         };
         let create_account2 = isi::Register {
-            object: Account::new(account2_name, domain_name, public_key),
+            object: Account::with_signatory(account2_name, domain_name, public_key),
             destination_id: String::from(domain_name),
         };
-        let asset_id = AssetId::new("xor", domain_name, account1_name);
-        let quantity: u128 = 200;
+        let asset_definition_id = AssetDefinitionId::new("xor", domain_name);
+        let quantity: u32 = 200;
         let create_asset = isi::Register {
-            object: Asset::new(asset_id.clone()).with_quantity(200),
+            object: AssetDefinition::new(asset_definition_id.clone()),
             destination_id: domain_name.to_string(),
         };
         let mint_asset = isi::Mint {
             object: quantity,
-            destination_id: asset_id.clone(),
+            destination_id: AssetId {
+                definition_id: asset_definition_id.clone(),
+                account_id: account1_id.clone(),
+            },
         };
-        let mut iroha_client = Client::new(&configuration);
+        let mut iroha_client = Client::new(&ClientConfiguration::from_iroha_configuration(
+            &configuration,
+        ));
         iroha_client
             .submit_all(vec![
                 create_domain.into(),
@@ -56,23 +67,29 @@ mod tests {
             .await
             .expect("Failed to create domain.");
         std::thread::sleep(std::time::Duration::from_millis(
-            &configuration.block_build_step_ms * 2,
+            &configuration.sumeragi_configuration.pipeline_time_ms() * 2,
         ));
         //When
         for _ in 0..100 {
             let transfer_asset = isi::Transfer {
                 source_id: account1_id.clone(),
                 destination_id: account2_id.clone(),
-                object: Asset::new(asset_id.clone()).with_quantity(1),
+                object: Asset::with_quantity(
+                    AssetId {
+                        definition_id: asset_definition_id.clone(),
+                        account_id: account1_id.clone(),
+                    },
+                    quantity,
+                ),
             };
             iroha_client
                 .submit(transfer_asset.into())
                 .await
-                .expect("Failed to submit command.");
+                .expect("Failed to submit instruction.");
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         std::thread::sleep(std::time::Duration::from_millis(
-            &configuration.block_build_step_ms * 2,
+            &configuration.sumeragi_configuration.pipeline_time_ms() * 2,
         ));
         //Then
         let request = client::assets::by_account_id(account2_id);
@@ -86,10 +103,13 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create TempDir.");
         let mut configuration =
             Configuration::from_path(CONFIGURATION_PATH).expect("Failed to load configuration.");
-        configuration.kura_block_store_path(temp_dir.path());
+        configuration
+            .kura_configuration
+            .kura_block_store_path(temp_dir.path());
         let iroha = Iroha::new(configuration);
         task::block_on(iroha.start()).expect("Failed to start Iroha.");
         //Prevents temp_dir from clean up untill the end of the tests.
+        #[allow(clippy::empty_loop)]
         loop {}
     }
 }

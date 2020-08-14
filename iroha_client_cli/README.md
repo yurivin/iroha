@@ -1,11 +1,31 @@
 # Iroha CLI Client
 
+## Description
+
 Iroha CLI Client provides an ability to interact with Iroha Peers Web API without direct network usage.
 It's a "light" client which only converts Command Line Interface commands into Iroha Web API Network Requests.
 
+### Features
+
+* Iroha CLI Client can submit Transactions with your Iroha Special Instructions to Iroha Peers
+* Iroha CLI Client can send Requests with your Queries to Iroha Peers
+
 ## Installation
 
-//TODO:
+### Requirements
+
+* [Rust](https://www.rust-lang.org/learn/get-started)
+
+### Build
+
+```bash
+cargo build
+```
+
+### Artifact
+
+`iroha_client_cli` executable file for Unix and `iroha_client_cli.exe` executable file for Windows will appear.
+All examples below are Unix oriented, to run them on Windows replace `./iroha_client_cli` with `iroha_client_cli.exe`.
 
 ## Examples
 
@@ -14,7 +34,6 @@ Full description and list of commands detailed in `iroha_cli --help`.
 ```
 $: ./iroha_client_cli --help
 Iroha CLI Client 0.1.0
-Nikita Puzankov <puzankov@soramitsu.co.jp>
 Iroha CLI Client provides an ability to interact with Iroha Peers Web API without direct network usage.
 
 USAGE:
@@ -28,9 +47,20 @@ OPTIONS:
     -c, --config <FILE>    Sets a config file path. [default: config.json]
 
 SUBCOMMANDS:
-    create    Use this command to request entities creation in Iroha Peer.
-    help      Prints this message or the help of the given subcommand(s)
+    account    Use this command to work with Account Entities in Iroha Peer.
+    asset      Use this command to work with Asset and Asset Definition Entities in Iroha Peer.
+    domain     Use this command to work with Domain Entities in Iroha Peer.
+    help       Prints this message or the help of the given subcommand(s)
+```
 
+### TL;DR
+
+```bash
+./iroha_client_cli domain add --name="Soramitsu"
+./iroha_client_cli account register --domain="Soramitsu" --name="White Rabbit" --key=""
+./iroha_client_cli asset register --domain="Soramitsu" --name="XOR" 
+./iroha_client_cli asset mint --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" --quantity=1010 
+./iroha_client_cli asset get --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" 
 ```
 
 ### Create new Domain
@@ -40,7 +70,7 @@ following by entity type (`domain` in our case) and list of required parameters.
 For domain entity we only need `name` parameter which is stringly typed.
 
 ```bash
-iroha_cli create domain --name="Soramitsu"
+./iroha_client_cli domain add --name="Soramitsu"
 ```
 
 ### Create new Account
@@ -52,30 +82,59 @@ We also give a `key` argument with account's public key as a double-quoted
 string value.
 
 ```bash
-iroha_cli create account --domain="Soramitsu" --name="White Rabbit" --key=""
+./iroha_client_cli account register --domain="Soramitsu" --name="White Rabbit" --key=""
 ```
 
-### Add Asset to Account
+### Mint Asset to Account
 
-Okay, it's time to give something to our account. We will add some assets amount to it.
-This time we need to create an asset first and then add some amount of it to the account.
-As you can see, we use new command `update` to add some assets amount to the account. Asset entity is like a schema for account holding amounts of it.
+Okay, it's time to give something to our Account. We will add some Assets quantity to it.
+This time we need to register an Asset Definition first and then add some Assets to the account.
+As you can see, we use new command `asset` and it's subcommands `register` and `mint`. 
 
 ```bash
-iroha_cli create asset --domain="Soramitsu" --name="XOR" --decimals=10 
-iroha_cli update asset add --account_id="White Rabbit@Soramitsu" --id="XOR@Soramitsu" --amount=1010 
+./iroha_client_cli asset register --domain="Soramitsu" --name="XOR" 
+./iroha_client_cli asset mint --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" --quantity=1010 
 ```
 
-### Query Account Assets Amount
+### Query Account Assets Quantity
 
-Because distributed systems heavily relay on the concept of eventual consistency and Iroha works in Consensus between peers, your requests may or may not be processed
-while Iroha Client will successufully send them and Iroha Peer will accept them. Different stages of transactions processing and different cases may lead to
+Because distributed systems heavily rely on the concept of eventual consistency and Iroha works in Consensus between peers, your requests may or may not be processed
+while Iroha Client will successfully send them and Iroha Peer will accept them. Different stages of transactions processing and different cases may lead to
 rejection of transaction after your receive response from Command Line Interface. To check that your instruction were applied and system now in the desired state
-you need to become familar and use Query API.
+you need to become familiar and use Query API.
 
 Let's use Get Account Assets Query as an example. Command will look familar because it almost the same as the update command.
-We need to know amount so we skipp this argument and replace `update asset add` part with `get asset`.
+We need to know quantity so we skip this argument and replace `update asset add` part with `get asset`.
 
 ```bash
-iroha_cli get asset --account_id="White Rabbit@Soramitsu" --id="XOR@Soramitsu" 
+./iroha_client_cli asset get --account_id="White Rabbit@Soramitsu" --id="XOR#Soramitsu" 
 ```
+
+### Want to help us develop Iroha?
+
+That's great! 
+Check out [this document](https://github.com/hyperledger/iroha/blob/iroha2-dev/CONTRIBUTING.md)
+
+## Need help?
+
+* Join [Telegram chat](https://t.me/hyperledgeriroha) or [Hyperledger RocketChat](https://chat.hyperledger.org/channel/iroha) where the maintainers, contributors and fellow users are ready to help you. 
+You can also discuss your concerns and proposals and simply chat about Iroha there or in Gitter [![Join the chat at https://gitter.im/hyperledger-iroha/Lobby](https://badges.gitter.im/hyperledger-iroha/Lobby.svg)](https://gitter.im/hyperledger-iroha/Lobby)
+* Submit issues and improvement suggestions via [Hyperledger Jira](https://jira.hyperledger.org/secure/CreateIssue!default.jspa) 
+* Subscribe to our [mailing list](https://lists.hyperledger.org/g/iroha) to receive the latest and most important news and spread your word within Iroha community
+
+## License
+
+Iroha codebase is licensed under the Apache License,
+Version 2.0 (the "License"); you may not use this file except
+in compliance with the License. You may obtain a copy of the
+License at http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Iroha documentation files are made available under the Creative Commons
+Attribution 4.0 International License (CC-BY-4.0), available at
+http://creativecommons.org/licenses/by/4.0/
