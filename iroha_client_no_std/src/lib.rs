@@ -12,6 +12,7 @@ pub mod torii;
 pub mod account;
 pub mod asset;
 pub mod block;
+pub mod bridge;
 pub mod domain;
 pub mod event;
 pub mod isi;
@@ -19,7 +20,6 @@ pub mod peer;
 pub mod permission;
 pub mod query;
 pub mod tx;
-pub mod bridge;
 
 pub mod prelude {
     #[doc(inline)]

@@ -3,10 +3,10 @@
 
 use super::query::IrohaQuery;
 // use iroha_derive::Io;
+use crate::Identifiable;
 use alloc::boxed::Box;
 use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
-use crate::Identifiable;
 
 pub mod prelude {
     //! Re-exports important traits and types. Meant to be glob imported when using `Iroha`.
@@ -49,8 +49,8 @@ pub enum Instruction {
 
 /// Generic instruction for an addition of an object to the identifiable destination.
 pub struct Add<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Object which should be added.
     pub object: O,
@@ -59,8 +59,8 @@ pub struct Add<D, O>
 }
 
 impl<D, O> Add<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Default `Add` constructor.
     pub fn new(object: O, destination_id: D::Id) -> Self {
@@ -73,8 +73,8 @@ impl<D, O> Add<D, O>
 
 /// Generic instruction for a removal of an object from the identifiable destination.
 pub struct Remove<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Object which should be removed.
     pub object: O,
@@ -83,8 +83,8 @@ pub struct Remove<D, O>
 }
 
 impl<D, O> Remove<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Default `Remove` constructor.
     pub fn new(object: O, destination_id: D::Id) -> Self {
@@ -97,8 +97,8 @@ impl<D, O> Remove<D, O>
 
 /// Generic instruction for a registration of an object to the identifiable destination.
 pub struct Register<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Object which should be registered.
     pub object: O,
@@ -107,8 +107,8 @@ pub struct Register<D, O>
 }
 
 impl<D, O> Register<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Default `Register` constructor.
     pub fn new(object: O, destination_id: D::Id) -> Self {
@@ -121,8 +121,8 @@ impl<D, O> Register<D, O>
 
 /// Generic instruction for a mint of an object to the identifiable destination.
 pub struct Mint<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Object which should be minted.
     pub object: O,
@@ -131,8 +131,8 @@ pub struct Mint<D, O>
 }
 
 impl<D, O> Mint<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Default `Mint` constructor.
     pub fn new(object: O, destination_id: D::Id) -> Self {
@@ -145,8 +145,8 @@ impl<D, O> Mint<D, O>
 
 /// Generic instruction for a demint of an object to the identifiable destination.
 pub struct Demint<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Object which should be deminted.
     pub object: O,
@@ -155,8 +155,8 @@ pub struct Demint<D, O>
 }
 
 impl<D, O> Demint<D, O>
-    where
-        D: Identifiable,
+where
+    D: Identifiable,
 {
     /// Default `Demint` constructor.
     pub fn new(object: O, destination_id: D::Id) -> Self {

@@ -249,16 +249,6 @@ impl Iroha {
                 AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
             )
             .into();
-            let bridge_account_id = AccountId::new("bridge", "polkadot");
-            let transfer_xor = Transfer::new(
-                account_id.clone(),
-                Asset::with_quantity(
-                    AssetId::new(xor_asset_def.id.clone(), account_id.clone()),
-                    100,
-                ),
-                bridge_account_id.clone(),
-            )
-            .into();
             let kp = KeyPair {
                 public_key: pk,
                 private_key: sk,
@@ -271,7 +261,6 @@ impl Iroha {
                     register_dot_asset,
                     register_ext_asset,
                     mint_xor,
-                    transfer_xor,
                 ],
                 account_id: bridge_admin_account_id,
                 creation_time: SystemTime::now()

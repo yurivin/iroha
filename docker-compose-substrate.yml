@@ -15,6 +15,25 @@ services:
         source: ./.local
         target: /root/.local
     command: bash -c "cargo build --package node-template && ../../target/debug/node-template --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
+  dev-manual:
+    build:
+      context: .
+      dockerfile: iroha_substrate/manual.Dockerfile
+    container_name: iroha-bridge-manual
+    working_dir: /var/www/iroha
+    ports:
+      - "9944:9944"
+      - "7878:7878"
+      - "8888:8888"
+      - "1337:1337"
+    environment:
+      - CARGO_HOME=/var/www/iroha/.cargo
+    volumes:
+      - .:/var/www/iroha
+      - type: bind
+        source: ./.local
+        target: /root/.local
+    command: bash -c "cargo build --package substrate-iroha-bridge-node && cargo build --package iroha"
   dev-bin:
     build: bridge_test
     container_name: node-template-bin

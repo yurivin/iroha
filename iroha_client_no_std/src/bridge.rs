@@ -1,14 +1,14 @@
 //! This module contains functionality related to `Bridge`.
 
-use crate::asset::Bytes;
-use crate::prelude::*;
-use parity_scale_codec::{Decode, Encode};
-use alloc::{boxed::Box, string::String, vec::Vec};
-use crate::isi::*;
-use crate::isi::prelude::*;
-use crate::alloc::string::ToString;
 use crate::alloc::borrow::ToOwned;
+use crate::alloc::string::ToString;
+use crate::asset::Bytes;
 use crate::crypto::PublicKey;
+use crate::isi::prelude::*;
+use crate::isi::*;
+use crate::prelude::*;
+use alloc::{boxed::Box, string::String, vec::Vec};
+use parity_scale_codec::{Decode, Encode};
 
 const BRIDGE_ACCOUNT_NAME: &str = "bridge";
 const BRIDGE_ASSET_BRIDGE_DEFINITION_PARAMETER_KEY: &str = "bridge_definition";
@@ -531,80 +531,80 @@ pub mod query {
 }
 
 impl From<Transfer<Account, Asset, Account>> for Instruction {
-        fn from(instruction: Transfer<Account, Asset, Account>) -> Self {
-            Instruction::Account(AccountInstruction::TransferAsset(
-                instruction.source_id,
-                instruction.destination_id,
-                instruction.object,
-            ))
-        }
+    fn from(instruction: Transfer<Account, Asset, Account>) -> Self {
+        Instruction::Account(AccountInstruction::TransferAsset(
+            instruction.source_id,
+            instruction.destination_id,
+            instruction.object,
+        ))
     }
+}
 
 impl From<Mint<Asset, u32>> for Instruction {
-        fn from(instruction: Mint<Asset, u32>) -> Self {
-            Instruction::Asset(AssetInstruction::MintAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Mint<Asset, u32>) -> Self {
+        Instruction::Asset(AssetInstruction::MintAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 impl From<Mint<Asset, u128>> for Instruction {
-        fn from(instruction: Mint<Asset, u128>) -> Self {
-            Instruction::Asset(AssetInstruction::MintBigAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Mint<Asset, u128>) -> Self {
+        Instruction::Asset(AssetInstruction::MintBigAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 impl From<Mint<Asset, (String, Bytes)>> for Instruction {
-        fn from(instruction: Mint<Asset, (String, Bytes)>) -> Self {
-            Instruction::Asset(AssetInstruction::MintParameterAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Mint<Asset, (String, Bytes)>) -> Self {
+        Instruction::Asset(AssetInstruction::MintParameterAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 impl From<Demint<Asset, u32>> for Instruction {
-        fn from(instruction: Demint<Asset, u32>) -> Self {
-            Instruction::Asset(AssetInstruction::DemintAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Demint<Asset, u32>) -> Self {
+        Instruction::Asset(AssetInstruction::DemintAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 impl From<Demint<Asset, u128>> for Instruction {
-        fn from(instruction: Demint<Asset, u128>) -> Self {
-            Instruction::Asset(AssetInstruction::DemintBigAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Demint<Asset, u128>) -> Self {
+        Instruction::Asset(AssetInstruction::DemintBigAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 impl From<Demint<Asset, String>> for Instruction {
-        fn from(instruction: Demint<Asset, String>) -> Self {
-            Instruction::Asset(AssetInstruction::DemintParameterAsset(
-                instruction.object,
-                instruction.destination_id,
-            ))
-        }
+    fn from(instruction: Demint<Asset, String>) -> Self {
+        Instruction::Asset(AssetInstruction::DemintParameterAsset(
+            instruction.object,
+            instruction.destination_id,
+        ))
     }
+}
 
 impl From<Register<Domain, Account>> for Instruction {
-        fn from(instruction: Register<Domain, Account>) -> Self {
-            Instruction::Domain(DomainInstruction::RegisterAccount(
-                instruction.destination_id,
-                instruction.object,
-            ))
-        }
+    fn from(instruction: Register<Domain, Account>) -> Self {
+        Instruction::Domain(DomainInstruction::RegisterAccount(
+            instruction.destination_id,
+            instruction.object,
+        ))
     }
+}
 impl From<Register<Domain, AssetDefinition>> for Instruction {
-        fn from(instruction: Register<Domain, AssetDefinition>) -> Self {
-            Instruction::Domain(DomainInstruction::RegisterAsset(
-                instruction.destination_id,
-                instruction.object,
-            ))
-        }
+    fn from(instruction: Register<Domain, AssetDefinition>) -> Self {
+        Instruction::Domain(DomainInstruction::RegisterAsset(
+            instruction.destination_id,
+            instruction.object,
+        ))
     }
+}
 
 impl From<Add<Peer, Domain>> for Instruction {
     fn from(add_instruction: Add<Peer, Domain>) -> Self {

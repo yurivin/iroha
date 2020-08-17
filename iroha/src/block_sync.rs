@@ -133,6 +133,8 @@ pub mod message {
         LatestBlock(Hash, PeerId),
         /// Request for blocks after the block with `Hash` for the peer with `PeerId`.
         GetBlocksAfter(Hash, PeerId),
+        /// Request for blocks from the block with the given height for the peer with `PeerId`.
+        GetBlocksFromHeight(u64, PeerId),
         /// The response to `GetBlocksAfter`. Contains the requested blocks and the id of the peer who shared them.
         ShareBlocks(Vec<ValidBlock>, PeerId),
     }
@@ -179,6 +181,9 @@ pub mod message {
                         block_sync.state = State::InProgress(blocks.clone(), peer_id.clone());
                         block_sync.continue_sync().await;
                     }
+                }
+                Message::GetBlocksFromHeight(_, _) => {
+                    unimplemented!();
                 }
             }
         }

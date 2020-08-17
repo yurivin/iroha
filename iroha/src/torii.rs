@@ -339,6 +339,18 @@ async fn handle_request(state: State<ToriiState>, request: Request) -> Result<Re
                             Ok(Response::InternalError)
                         }
                     }
+                    Message::GetBlocksFromHeight(n, _) => {
+                        let n = n as usize;
+                        if n < blocks.size_hint().1.unwrap() {
+                            Ok(Response::Ok(
+                                Message::ShareBlocks(blocks.skip(n).collect(), PeerId::new("", pk))
+                                    .encode(),
+                            ))
+                        } else {
+                            eprintln!("Block not found");
+                            Ok(Response::InternalError)
+                        }
+                    }
                     Message::ShareBlocks(_, _) => Ok(Response::InternalError),
                 }
             }

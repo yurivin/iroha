@@ -16,6 +16,8 @@ pub enum Message {
     LatestBlock(Hash, PeerId),
     /// Request for blocks after the block with `Hash` for the peer with `PeerId`.
     GetBlocksAfter(Hash, PeerId),
+    /// Request for blocks after the block with `Hash` for the peer with `PeerId`.
+    GetBlocksFromHeight(u64, PeerId),
     /// The response to `GetBlocksAfter`. Contains the requested blocks and the id of the peer who shared them.
     ShareBlocks(Vec<ValidBlock>, PeerId),
 }

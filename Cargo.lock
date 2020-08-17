@@ -8035,6 +8035,7 @@ version = "2.0.0-rc.4"
 dependencies = [
  "frame-support",
  "frame-system",
+ "iroha_client_no_std",
  "mocktopus",
  "pallet-balances",
  "parity-scale-codec",
