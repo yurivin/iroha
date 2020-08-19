@@ -3,8 +3,8 @@ version: "3.2"
 services:
   dev:
     build: iroha_substrate
-    container_name: node-template
-    working_dir: /var/www/iroha/iroha_substrate/substrate-node-template
+    container_name: iroha-bridge
+    working_dir: /var/www/iroha/iroha_substrate/substrate-iroha-bridge-node
     ports:
       - "9944:9944"
     environment:
@@ -14,7 +14,7 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "cargo build --package node-template && ../../target/debug/node-template --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
+    command: bash -c "cargo build --package substrate-iroha-bridge-node && ../../target/debug/substrate-iroha-bridge-node --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
   dev-manual:
     build:
       context: .
@@ -33,10 +33,12 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "cargo build --package substrate-iroha-bridge-node && cargo build --package iroha"
+    command: bash iroha_substrate/substrate-iroha-bridge-node/scripts/run_tester.sh
   dev-bin:
-    build: bridge_test
-    container_name: node-template-bin
+    build:
+      context: iroha_substrate
+      dockerfile: bin.Dockerfile
+    container_name: iroha-bridge-bin
     ports:
       - "9944:9944"
       - "7878:7878"
@@ -46,4 +48,4 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "RUST_LOG=info ./node-template --dev --ws-external & RUST_LOG=error ./iroha > /dev/null & sleep 10 && ./bridge-tester"
+    command: bash -c "RUST_LOG=pallet_iroha_bridge=debug ./substrate-iroha-bridge-node --dev --ws-external & RUST_LOG=error ./iroha > /dev/null & sleep 10 && ./bridge-tester"
