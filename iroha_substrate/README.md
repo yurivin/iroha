@@ -2,7 +2,10 @@
 
 A bridge between Iroha and Substrate blockchains.
 
-_Warning: this repository is a part of [Iroha](https://github.com/vmarkushin/iroha/tree/bridge-ms2) and will not work on it's own. To build or run the code you need to clone the Iroha repository._
+_Warning: this repository is a part of [Iroha](https://github.com/vmarkushin/iroha/tree/bridge-ms2) and will not work on it's own. To build or run the code you need to clone the Iroha repository:_
+```
+git clone --recurse-submodules --branch bridge-ms2 https://github.com/vmarkushin/iroha.git && cd iroha
+```
 
 ## Project structure
 

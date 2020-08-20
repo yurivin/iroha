@@ -3,4 +3,4 @@
 	url = https://github.com/substrate-developer-hub/substrate-front-end-template.git
 [submodule "iroha_substrate/substrate-iroha-bridge-node"]
 	path = iroha_substrate/substrate-iroha-bridge-node
-	url = git@github.com:vmarkushin/substrate-iroha-bridge-node.git
+	url = https://github.com/vmarkushin/substrate-iroha-bridge-node.git
