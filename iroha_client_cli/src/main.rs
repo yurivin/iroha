@@ -965,7 +965,7 @@ mod dex {
             base_asset_definition_id,
             target_asset_definition_id,
         );
-        executor::block_on(iroha_client.submit(create_xyk_pool(token_pair_id)))
+        executor::block_on(iroha_client.submit(xyk_pool::create(token_pair_id)))
             .expect("Failed to create XYK Pool.");
     }
 
@@ -996,7 +996,7 @@ mod dex {
         );
         let liquidity_source_id =
             LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
-        executor::block_on(iroha_client.submit(xyk_pool_add_liquidity(
+        executor::block_on(iroha_client.submit(xyk_pool::add_liquidity(
             liquidity_source_id,
             amount_a_desired,
             amount_b_desired,
@@ -1031,7 +1031,7 @@ mod dex {
         let liquidity_source_id =
             LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
         // submit command
-        executor::block_on(iroha_client.submit(xyk_pool_remove_liquidity(
+        executor::block_on(iroha_client.submit(xyk_pool::remove_liquidity(
             liquidity_source_id,
             liquidity_quantity,
             amount_a_min,
@@ -1058,7 +1058,7 @@ mod dex {
             .map(|asset| AssetDefinitionId::from(asset.as_str()))
             .collect::<Vec<_>>();
         let dex_id = DEXId::new(domain_name);
-        executor::block_on(iroha_client.submit(xyk_pool_swap_exact_tokens_for_tokens(
+        executor::block_on(iroha_client.submit(xyk_pool::swap_exact_tokens_for_tokens(
             dex_id,
             path,
             input_quantity,
@@ -1085,7 +1085,7 @@ mod dex {
             .map(|asset| AssetDefinitionId::from(asset.as_str()))
             .collect::<Vec<_>>();
         let dex_id = DEXId::new(domain_name);
-        executor::block_on(iroha_client.submit(xyk_pool_swap_tokens_for_exact_tokens(
+        executor::block_on(iroha_client.submit(xyk_pool::swap_tokens_for_exact_tokens(
             dex_id,
             path,
             output_quantity,
