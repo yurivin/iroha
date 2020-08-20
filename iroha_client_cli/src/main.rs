@@ -176,7 +176,7 @@ mod account {
                         Arg::with_name(ACCOUNT_ID)
                             .long(ACCOUNT_ID)
                             .value_name(ACCOUNT_ID)
-                            .help("Account Id in format `Name@Domain`")
+                            .help("Account's Id as double-quoted string in the format `account_name@domain_name`.")
                             .takes_value(true)
                             .required(true),
                     )
@@ -184,7 +184,7 @@ mod account {
                         Arg::with_name(ASSET_DEFINITION_ID)
                             .long(ASSET_DEFINITION_ID)
                             .value_name(ASSET_DEFINITION_ID)
-                            .help("Asset Definition Id i format `Name#Domain`")
+                            .help("Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
                             .takes_value(true)
                             .required(true),
                     ),
@@ -248,12 +248,12 @@ mod account {
         }
     }
 
-    fn add_transfer_permission(asset_definition_id: &str, account_id: &str) {
+    fn add_transfer_permission(asset_id: &str, account_id: &str) {
         let mut iroha_client = Client::new(
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
         let account_id = AccountId::from(account_id);
-        let asset_definition_id = AssetDefinitionId::from(asset_definition_id);
+        let asset_definition_id = AssetDefinitionId::from(asset_id);
         let instruction = add_transfer_permission_for_account(asset_definition_id, account_id);
         executor::block_on(iroha_client.submit(instruction))
             .expect("Failed to add TransferAsset permission for account")
@@ -284,37 +284,71 @@ mod asset {
             .about("Use this command to work with Asset and Asset Definition Entities in Iroha Peer.")
             .subcommand(
         App::new(REGISTER)
-        .about("Use this command to register new Asset Definition in existing Iroha Domain.")
-            .arg(
-                Arg::with_name(ASSET_DOMAIN_NAME)
-                    .long(ASSET_DOMAIN_NAME)
-                    .value_name(ASSET_DOMAIN_NAME)
-                    .help("Asset's domain's name as double-quoted string.")
-                    .takes_value(true)
-                    .required(true),
+                    .about("Use this command to register new Asset Definition in existing Iroha Domain.")
+                    .arg(
+                        Arg::with_name(ASSET_DOMAIN_NAME)
+                            .long(ASSET_DOMAIN_NAME)
+                            .value_name(ASSET_DOMAIN_NAME)
+                            .help("Asset's domain's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true),
+                    )
+                    .arg(
+                        Arg::with_name(ASSET_NAME)
+                            .long(ASSET_NAME)
+                            .value_name(ASSET_NAME)
+                            .help("Asset's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true),
+                    )
             )
-            .arg(
-                Arg::with_name(ASSET_NAME)
-                    .long(ASSET_NAME)
-                    .value_name(ASSET_NAME)
-                    .help("Asset's name as double-quoted string.")
-                    .takes_value(true)
-                    .required(true),
-            )
-            )
-                .subcommand(
-                    App::new(MINT)
-                    .about("Use this command to Mint Asset in existing Iroha Account.")
-                    .arg(Arg::with_name(ASSET_ACCOUNT_ID).long(ASSET_ACCOUNT_ID).value_name(ASSET_ACCOUNT_ID).help("Account's id as double-quoted string in the following format `account_name@domain_name`.").takes_value(true).required(true))
-                    .arg(Arg::with_name(ASSET_ID).long(ASSET_ID).value_name(ASSET_ID).help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.").takes_value(true).required(true))
-                    .arg(Arg::with_name(QUANTITY).long(QUANTITY).value_name(QUANTITY).help("Asset's quantity as a number.").takes_value(true).required(true))
+            .subcommand(
+                App::new(MINT)
+                .about("Use this command to Mint Asset in existing Iroha Account.")
+                .arg(
+                    Arg::with_name(ASSET_ACCOUNT_ID)
+                        .long(ASSET_ACCOUNT_ID)
+                        .value_name(ASSET_ACCOUNT_ID)
+                        .help("Account's id as double-quoted string in the following format `account_name@domain_name`.")
+                        .takes_value(true)
+                        .required(true)
                 )
-                .subcommand(
-                    App::new(GET)
-                    .about("Use this command to get Asset information from Iroha Account.")
-                        .arg(Arg::with_name(ASSET_ACCOUNT_ID).long(ASSET_ACCOUNT_ID).value_name(ASSET_ACCOUNT_ID).help("Account's id as double-quoted string in the following format `account_name@domain_name`.").takes_value(true).required(true))
-                        .arg(Arg::with_name(ASSET_ID).long(ASSET_ID).value_name(ASSET_ID).help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.").takes_value(true).required(true))
-
+                .arg(
+                    Arg::with_name(ASSET_ID)
+                        .long(ASSET_ID)
+                        .value_name(ASSET_ID)
+                        .help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.")
+                        .takes_value(true)
+                        .required(true)
+                )
+                .arg(
+                    Arg::with_name(QUANTITY)
+                        .long(QUANTITY)
+                        .value_name(QUANTITY)
+                        .help("Asset's quantity as a number.")
+                        .takes_value(true)
+                        .required(true)
+                    )
+            )
+            .subcommand(
+                App::new(GET)
+                .about("Use this command to get Asset information from Iroha Account.")
+                    .arg(
+                        Arg::with_name(ASSET_ACCOUNT_ID)
+                            .long(ASSET_ACCOUNT_ID)
+                            .value_name(ASSET_ACCOUNT_ID)
+                            .help("Account's id as double-quoted string in the following format `account_name@domain_name`.")
+                            .takes_value(true)
+                            .required(true)
+                    )
+                    .arg(
+                        Arg::with_name(ASSET_ID)
+                            .long(ASSET_ID)
+                            .value_name(ASSET_ID)
+                            .help("Asset's id as double-quoted string in the following format `asset_name#domain_name`.")
+                            .takes_value(true)
+                            .required(true)
+                    )
             )
     }
 
@@ -418,24 +452,24 @@ mod dex {
 
     const INITIALIZE: &str = "initialize";
     const TOKEN_PAIR: &str = "token_pair";
+    const OWNER_ACCOUNT_ID: &str = "owner_account_id";
+    const BASE_ASSET_ID: &str = "base_asset_id";
+    const TARGET_ASSET_ID: &str = "target_asset_id";
     const CREATE: &str = "create";
     const REMOVE: &str = "remove";
     const LIST: &str = "list";
     const GET: &str = "get";
-    const OWNER_ACCOUNT_ID: &str = "owner_account_id";
     const DOMAIN_NAME: &str = "domain";
-    const BASE: &str = "base";
-    const TARGET: &str = "target";
     const XYK_POOL: &str = "xyk_pool";
     const BASE_AMOUNT: &str = "base_amount";
     const TARGET_AMOUNT: &str = "target_amount";
+    const INPUT_AMOUNT: &str = "input_amount";
+    const OUTPUT_AMOUNT: &str = "output_amount";
     const LIQUIDITY: &str = "liquidity";
     const ADD_LIQUIDITY: &str = "add_liquidity";
     const REMOVE_LIQUIDITY: &str = "remove_liquidity";
     const XYK_POOL_SWAP: &str = "xyk_pool_swap";
     const PATH: &str = "path";
-    const INPUT_QUANTITY: &str = "input_quantity";
-    const OUTPUT_QUANTITY: &str = "output_quantity";
 
     pub fn build_app<'a, 'b>() -> App<'a, 'b> {
         App::new(DEX)
@@ -459,6 +493,14 @@ mod dex {
                             .takes_value(true)
                             .required(true)
                     )
+                    .arg(
+                        Arg::with_name(BASE_ASSET_ID)
+                            .long(BASE_ASSET_ID)
+                            .value_name(BASE_ASSET_ID)
+                            .help("Base Asset Id as double-quoted string in the following format `asset_name#domain_name`.")
+                            .takes_value(true)
+                            .required(true)
+                    )
             )
             .subcommand(
                 App::new(LIST)
@@ -467,7 +509,14 @@ mod dex {
             .subcommand(
                 App::new(GET)
                     .about("Use this command to get particular DEX information.")
-                    .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
+                    .arg(
+                        Arg::with_name(DOMAIN_NAME)
+                            .long(DOMAIN_NAME)
+                            .value_name(DOMAIN_NAME)
+                            .help("DEX's domain's name as double-quoted string.")
+                            .takes_value(true)
+                            .required(true)
+                    )
             )
             .subcommand(
                 App::new(TOKEN_PAIR)
@@ -476,20 +525,62 @@ mod dex {
                     .subcommand(
                         App::new(CREATE)
                             .about("Use this command to create a new Token Pair for existing Assets.")
-                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
-                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(
+                                Arg::with_name(BASE_ASSET_ID)
+                                    .long(BASE_ASSET_ID)
+                                    .value_name(BASE_ASSET_ID)
+                                    .help("Base Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::with_name(TARGET_ASSET_ID)
+                                    .long(TARGET_ASSET_ID)
+                                    .value_name(TARGET_ASSET_ID)
+                                    .help("Target Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
                     )
                     .subcommand(
                         App::new(REMOVE)
                             .about("Use this command to delete existing Token Pair from the DEX.")
-                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
-                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(
+                                Arg::with_name(BASE_ASSET_ID)
+                                    .long(BASE_ASSET_ID)
+                                    .value_name(BASE_ASSET_ID)
+                                    .help("Base Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::with_name(TARGET_ASSET_ID)
+                                    .long(TARGET_ASSET_ID)
+                                    .value_name(TARGET_ASSET_ID)
+                                    .help("Target Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
                     )
                     .subcommand(
                         App::new(GET)
                             .about("Use this command to get information about existing Token Pair from the DEX.")
-                            .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
-                            .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                            .arg(
+                                Arg::with_name(BASE_ASSET_ID)
+                                    .long(BASE_ASSET_ID)
+                                    .value_name(BASE_ASSET_ID)
+                                    .help("Base Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::with_name(TARGET_ASSET_ID)
+                                    .long(TARGET_ASSET_ID)
+                                    .value_name(TARGET_ASSET_ID)
+                                    .help("Target Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                    .takes_value(true)
+                                    .required(true)
+                            )
                     )
                     .subcommand(
                         App::new(LIST)
@@ -499,31 +590,100 @@ mod dex {
             .subcommand(
                 App::new(XYK_POOL_SWAP)
                 .about("Use this command to swap tokens via chain of XYK Pools.")
-                .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
-                .arg(Arg::with_name(PATH).long(PATH).value_name(PATH).help("Path of Asset names via which exchange will happen, written as array of asset names (e.g. [\"ETH\", \"XOR\", \"DOT\"])").takes_value(true).required(true))
-                .arg(Arg::with_name(OUTPUT_QUANTITY).long(OUTPUT_QUANTITY).value_name(OUTPUT_QUANTITY).help("Output Asset's (last in path) quantity.").takes_value(true).required(false))
-                .arg(Arg::with_name(INPUT_QUANTITY).long(INPUT_QUANTITY).value_name(INPUT_QUANTITY).help("Input Asset's (first in path) quantity.").takes_value(true).required(false))
+                .arg(
+                    Arg::with_name(DOMAIN_NAME)
+                        .long(DOMAIN_NAME)
+                        .value_name(DOMAIN_NAME)
+                        .help("DEX's domain's name as double-quoted string.")
+                        .takes_value(true)
+                        .required(true)
+                )
+                .arg(
+                    Arg::with_name(PATH)
+                        .long(PATH)
+                        .value_name(PATH)
+                        .help("Path of Asset names via which exchange will happen, written as array of asset names (e.g. [\"ETH\", \"XOR\", \"DOT\"])")
+                        .takes_value(true)
+                        .required(true)
+                )
+                .arg(
+                    Arg::with_name(OUTPUT_AMOUNT)
+                        .long(OUTPUT_AMOUNT)
+                        .value_name(OUTPUT_AMOUNT)
+                        .help("Output Asset's (last in path) quantity.")
+                        .takes_value(true)
+                        .required(false)
+                )
+                .arg(
+                    Arg::with_name(INPUT_AMOUNT)
+                        .long(INPUT_AMOUNT)
+                        .value_name(INPUT_AMOUNT)
+                        .help("Input Asset's (first in path) quantity.")
+                        .takes_value(true)
+                        .required(false)
+                )
             )
             .subcommand(
                 App::new(XYK_POOL)
                         .about("Use this command to work with LiquditySource of type XYK Pool in active TokenPair.")
-                        .arg(Arg::with_name(DOMAIN_NAME).long(DOMAIN_NAME).value_name(DOMAIN_NAME).help("DEX's domain's name as double-quoted string.").takes_value(true).required(true))
-                        .arg(Arg::with_name(BASE).long(BASE).value_name(BASE).help("Base Asset's name without domain indication.").takes_value(true).required(true))
-                        .arg(Arg::with_name(TARGET).long(TARGET).value_name(TARGET).help("Target Asset's name without domain indication.").takes_value(true).required(true))
+                        .arg(
+                            Arg::with_name(DOMAIN_NAME)
+                                .long(DOMAIN_NAME)
+                                .value_name(DOMAIN_NAME)
+                                .help("DEX's domain's name as double-quoted string.")
+                                .takes_value(true)
+                                .required(true)
+                        )
+                        .arg(
+                            Arg::with_name(BASE_ASSET_ID)
+                                .long(BASE_ASSET_ID)
+                                .value_name(BASE_ASSET_ID)
+                                .help("Base Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                .takes_value(true)
+                                .required(true)
+                        )
+                        .arg(
+                            Arg::with_name(TARGET_ASSET_ID)
+                                .long(TARGET_ASSET_ID)
+                                .value_name(TARGET_ASSET_ID)
+                                .help("Target Asset's Id as double-quoted string in the following format `asset_name#domain_name`.")
+                                .takes_value(true)
+                                .required(true)
+                        )
                         .subcommand(
                             App::new(CREATE)
-                            .about("Use this command to create a new XYK Pool for existing TokenPair.")
+                                .about("Use this command to create a new XYK Pool for existing TokenPair.")
                         )
                         .subcommand(
                             App::new(ADD_LIQUIDITY)
-                            .about("Use this command to add liquidity to XYK Pool with desired amounts of both tokens in exchange pair.")
-                            .arg(Arg::with_name(BASE_AMOUNT).long(BASE_AMOUNT).value_name(BASE_AMOUNT).help("Desired amount of Base Asset to deposit.").takes_value(true).required(true))
-                            .arg(Arg::with_name(TARGET_AMOUNT).long(TARGET_AMOUNT).value_name(TARGET_AMOUNT).help("Desired amount of Target Asset to deposit.").takes_value(true).required(true))
+                                .about("Use this command to add liquidity to XYK Pool with desired amounts of both tokens in exchange pair.")
+                                .arg(
+                                    Arg::with_name(BASE_AMOUNT)
+                                        .long(BASE_AMOUNT)
+                                        .value_name(BASE_AMOUNT)
+                                        .help("Desired amount of Base Asset to deposit.")
+                                        .takes_value(true)
+                                        .required(true)
+                                )
+                                .arg(
+                                    Arg::with_name(TARGET_AMOUNT)
+                                        .long(TARGET_AMOUNT)
+                                        .value_name(TARGET_AMOUNT)
+                                        .help("Desired amount of Target Asset to deposit.")
+                                        .takes_value(true)
+                                        .required(true)
+                                )
                         )
                         .subcommand(
                             App::new(REMOVE_LIQUIDITY)
                             .about("Use this command to remove liquidity from XYK Pool with desired amounts of both tokens in exchange pair.")
-                            .arg(Arg::with_name(LIQUIDITY).long(LIQUIDITY).value_name(LIQUIDITY).help("Desired amount of Liquidity Asset to be burned.").takes_value(true).required(true))
+                            .arg(
+                                Arg::with_name(LIQUIDITY)
+                                    .long(LIQUIDITY)
+                                    .value_name(LIQUIDITY)
+                                    .help("Desired amount of Pool Asset to be burned.")
+                                    .takes_value(true)
+                                    .required(true))
                         )
             )
     }
@@ -532,9 +692,12 @@ mod dex {
         if let Some(ref matches) = matches.subcommand_matches(INITIALIZE) {
             if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
                 println!("Initializing DEX in the domain: {}", domain_name);
-                if let Some(owner_account_id) = matches.value_of(OWNER_ACCOUNT_ID) {
-                    println!("Initializing DEX with owner account: {}", owner_account_id);
-                    initialize_dex(domain_name, owner_account_id);
+                if let Some(base_asset) = matches.value_of(BASE_ASSET_ID) {
+                    println!("Initializing DEX with base asset: {}", base_asset);
+                    if let Some(owner_account_id) = matches.value_of(OWNER_ACCOUNT_ID) {
+                        println!("Initializing DEX with owner account: {}", owner_account_id);
+                        initialize_dex(domain_name, owner_account_id, base_asset);
+                    }
                 }
             }
         }
@@ -552,25 +715,19 @@ mod dex {
             if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
                 if let Some(ref matches) = matches.subcommand_matches(CREATE) {
                     println!("Creating Token Pair in the domain: {}", domain_name);
-                    if let Some(base_asset) = matches.value_of(BASE) {
-                        println!(
-                            "Creating Token Pair with base asset: {}#{}",
-                            base_asset, domain_name
-                        );
-                        if let Some(target_asset) = matches.value_of(TARGET) {
-                            println!(
-                                "Creating Token Pair with target asset: {}#{}",
-                                target_asset, domain_name
-                            );
+                    if let Some(base_asset) = matches.value_of(BASE_ASSET_ID) {
+                        println!("Creating Token Pair with base asset: {}", base_asset);
+                        if let Some(target_asset) = matches.value_of(TARGET_ASSET_ID) {
+                            println!("Creating Token Pair with target asset: {}", target_asset);
                             create_token_pair(domain_name, base_asset, target_asset);
                         }
                     }
                 }
                 if let Some(ref matches) = matches.subcommand_matches(REMOVE) {
                     println!("Removing Token Pair in the domain: {}", domain_name);
-                    if let Some(base_asset) = matches.value_of(BASE) {
+                    if let Some(base_asset) = matches.value_of(BASE_ASSET_ID) {
                         println!("Removing Token Pair with base asset: {}", base_asset);
-                        if let Some(target_asset) = matches.value_of(TARGET) {
+                        if let Some(target_asset) = matches.value_of(TARGET_ASSET_ID) {
                             println!("Removing Token Pair with target asset: {}", target_asset);
                             remove_token_pair(domain_name, base_asset, target_asset);
                         }
@@ -582,9 +739,9 @@ mod dex {
                 }
                 if let Some(ref matches) = matches.subcommand_matches(GET) {
                     println!("Getting Token Pair in the domain: {}", domain_name);
-                    if let Some(base_asset) = matches.value_of(BASE) {
+                    if let Some(base_asset) = matches.value_of(BASE_ASSET_ID) {
                         println!("Getting Token Pair with base asset: {}", base_asset);
-                        if let Some(target_asset) = matches.value_of(TARGET) {
+                        if let Some(target_asset) = matches.value_of(TARGET_ASSET_ID) {
                             println!("Getting Token Pair with target asset: {}", target_asset);
                             get_token_pair(domain_name, base_asset, target_asset);
                         }
@@ -598,29 +755,23 @@ mod dex {
                 if let Some(path) = matches.value_of(PATH) {
                     println!("Swapping Tokens via path: {}", path);
                     match (
-                        matches.value_of(INPUT_QUANTITY),
-                        matches.value_of(OUTPUT_QUANTITY),
+                        matches.value_of(INPUT_AMOUNT),
+                        matches.value_of(OUTPUT_AMOUNT),
                     ) {
-                        (Some(input_quantity), None) => {
-                            println!(
-                                "Swapping Exact Tokens For Tokens of quantity: {}",
-                                input_quantity
-                            );
+                        (Some(input_amount), None) => {
+                            println!("Swapping Exact Tokens For Tokens amount: {}", input_amount);
                             swap_exact_tokens_for_tokens_xyk_pool_cli(
                                 domain_name,
                                 path,
-                                input_quantity,
+                                input_amount,
                             );
                         }
-                        (None, Some(output_quantity)) => {
-                            println!(
-                                "Swapping Tokens for Exact Tokens of quantity: {}",
-                                output_quantity
-                            );
+                        (None, Some(output_amount)) => {
+                            println!("Swapping Tokens for Exact Tokens amount: {}", output_amount);
                             swap_tokens_for_exact_tokens_xyk_pool_cli(
                                 domain_name,
                                 path,
-                                output_quantity,
+                                output_amount,
                             );
                         }
                         _ => {
@@ -632,8 +783,8 @@ mod dex {
         }
         if let Some(ref matches) = matches.subcommand_matches(XYK_POOL) {
             if let Some(domain_name) = matches.value_of(DOMAIN_NAME) {
-                if let Some(base_asset) = matches.value_of(BASE) {
-                    if let Some(target_asset) = matches.value_of(TARGET) {
+                if let Some(base_asset) = matches.value_of(BASE_ASSET_ID) {
+                    if let Some(target_asset) = matches.value_of(TARGET_ASSET_ID) {
                         if let Some(ref _matches) = matches.subcommand_matches(CREATE) {
                             println!(
                                 "Creating XYK Pool in the domain: {} with base: {} and target: {}",
@@ -654,7 +805,7 @@ mod dex {
                                     );
                                     println!(
                                         "Adding liquidity into XYK Pool for Token Pair with Target Asset: {} of quantity: {}",
-                                        base_asset, target_amount
+                                        target_asset, target_amount
                                     );
                                     add_liquidity_xyk_pool_cli(
                                         domain_name,
@@ -690,15 +841,16 @@ mod dex {
         }
     }
 
-    fn initialize_dex(domain_name: &str, dex_owner: &str) {
+    fn initialize_dex(domain_name: &str, dex_owner: &str, base_asset: &str) {
         let mut iroha_client = Client::new(
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
         let owner_account_id = AccountId::from(dex_owner);
+        let base_asset_id = AssetDefinitionId::from(base_asset);
         executor::block_on(
             iroha_client.submit(
                 isi::Register {
-                    object: DEX::new(domain_name, owner_account_id),
+                    object: DEX::new(domain_name, owner_account_id, base_asset_id),
                     destination_id: <Domain as Identifiable>::Id::from(domain_name),
                 }
                 .into(),
@@ -731,13 +883,13 @@ mod dex {
         }
     }
 
-    fn create_token_pair(domain_name: &str, base_asset_name: &str, target_asset_name: &str) {
+    fn create_token_pair(domain_name: &str, base_asset: &str, target_asset: &str) {
         let mut iroha_client = Client::new(
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
         let dex_id = DEXId::new(domain_name);
-        let base_asset_id = AssetDefinitionId::new(base_asset_name, domain_name);
-        let target_asset_id = AssetDefinitionId::new(target_asset_name, domain_name);
+        let base_asset_id = AssetDefinitionId::from(base_asset);
+        let target_asset_id = AssetDefinitionId::from(target_asset);
         executor::block_on(
             iroha_client.submit(
                 isi::Add {
@@ -755,8 +907,8 @@ mod dex {
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
         let dex_id = DEXId::new(domain_name);
-        let base_asset_id = AssetDefinitionId::new(base_asset, domain_name);
-        let target_asset_id = AssetDefinitionId::new(target_asset, domain_name);
+        let base_asset_id = AssetDefinitionId::from(base_asset);
+        let target_asset_id = AssetDefinitionId::from(target_asset);
         let token_pair_id = TokenPairId::new(dex_id.clone(), base_asset_id, target_asset_id);
         executor::block_on(
             iroha_client.submit(
@@ -787,8 +939,8 @@ mod dex {
         let mut iroha_client = Client::new(
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
-        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
-        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let base_asset_definition_id = AssetDefinitionId::from(base_asset);
+        let target_asset_definition_id = AssetDefinitionId::from(target_asset);
         let token_pair_id = TokenPairId::new(
             DEXId::new(domain_name),
             base_asset_definition_id,
@@ -806,8 +958,8 @@ mod dex {
         let mut iroha_client = Client::new(
             &Configuration::from_path("config.json").expect("Failed to load configuration."),
         );
-        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
-        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let base_asset_definition_id = AssetDefinitionId::from(base_asset);
+        let target_asset_definition_id = AssetDefinitionId::from(target_asset);
         let token_pair_id = TokenPairId::new(
             DEXId::new(domain_name),
             base_asset_definition_id,
@@ -835,8 +987,8 @@ mod dex {
             .expect("Failed to parse Asset quantity for Target.");
         let amount_a_min = 0u32;
         let amount_b_min = 0u32;
-        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
-        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let base_asset_definition_id = AssetDefinitionId::from(base_asset);
+        let target_asset_definition_id = AssetDefinitionId::from(target_asset);
         let token_pair_id = TokenPairId::new(
             DEXId::new(domain_name),
             base_asset_definition_id,
@@ -869,8 +1021,8 @@ mod dex {
             .expect("Failed to parse Asset quantity for Liquidity.");
         let amount_a_min = 0u32;
         let amount_b_min = 0u32;
-        let base_asset_definition_id = AssetDefinitionId::new(base_asset, domain_name);
-        let target_asset_definition_id = AssetDefinitionId::new(target_asset, domain_name);
+        let base_asset_definition_id = AssetDefinitionId::from(base_asset);
+        let target_asset_definition_id = AssetDefinitionId::from(target_asset);
         let token_pair_id = TokenPairId::new(
             DEXId::new(domain_name),
             base_asset_definition_id,
@@ -903,10 +1055,11 @@ mod dex {
         let path = util::string_array_from_str(path)
             .unwrap()
             .iter()
-            .map(|asset_name| AssetDefinitionId::new(asset_name, domain_name))
+            .map(|asset| AssetDefinitionId::from(asset.as_str()))
             .collect::<Vec<_>>();
-
+        let dex_id = DEXId::new(domain_name);
         executor::block_on(iroha_client.submit(xyk_pool_swap_exact_tokens_for_tokens(
+            dex_id,
             path,
             input_quantity,
             output_quantity_min,
@@ -929,10 +1082,11 @@ mod dex {
         let path = util::string_array_from_str(path)
             .unwrap()
             .iter()
-            .map(|asset_name| AssetDefinitionId::new(asset_name, domain_name))
+            .map(|asset| AssetDefinitionId::from(asset.as_str()))
             .collect::<Vec<_>>();
-
+        let dex_id = DEXId::new(domain_name);
         executor::block_on(iroha_client.submit(xyk_pool_swap_tokens_for_exact_tokens(
+            dex_id,
             path,
             output_quantity,
             input_quantity_max,
