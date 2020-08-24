@@ -60,6 +60,22 @@ impl Configuration {
         Ok(configuration)
     }
 
+    pub fn from_str(s: &str) -> Result<Configuration, String> {
+        // let file = File::open(path).map_err(|e| format!("Failed to open a file: {}", e))?;
+        // let reader = BufReader::new(file);
+        let mut configuration: Configuration = serde_json::from_str(s)
+            .map_err(|e| format!("Failed to deserialize json from reader: {}", e))?;
+        configuration.sumeragi_configuration.key_pair = KeyPair {
+            public_key: configuration.public_key,
+            private_key: configuration.private_key.clone(),
+        };
+        configuration.sumeragi_configuration.peer_id = PeerId::new(
+            &configuration.torii_configuration.torii_url,
+            &configuration.public_key,
+        );
+        Ok(configuration)
+    }
+
     /// Load environment variables and replace existing parameters with these variables values.
     pub fn load_environment(&mut self) -> Result<(), String> {
         self.torii_configuration.load_environment()?;

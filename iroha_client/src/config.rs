@@ -55,6 +55,11 @@ impl Configuration {
             .map_err(|e| format!("Failed to deserialize json from reader: {}", e))?)
     }
 
+    pub fn from_str(s: &str) -> Result<Configuration, String> {
+        Ok(serde_json::from_str(s)
+            .map_err(|e| format!("Failed to deserialize json from reader: {}", e))?)
+    }
+
     /// This method will build `Configuration` from existing `IrohaConfiguration`.
     pub fn from_iroha_configuration(configuration: &IrohaConfiguration) -> Self {
         Configuration {

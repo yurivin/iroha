@@ -18,3 +18,6 @@ members = [
   "iroha_substrate/substrate-iroha-bridge-node/pallets/treasury",
   "iroha_substrate/substrate-iroha-bridge-node/runtime",
 ]
+
+#[patch.'git+https://github.com/paritytech/substrate.git?tag=v2.0.0-rc4#00768a1f21a579c478fe5d4f51e1fa71f7db9fd4']
+#sp-core = { git = 'https://github.com/vmarkushin/substrate.git' }
