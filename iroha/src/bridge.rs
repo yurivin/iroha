@@ -107,26 +107,31 @@ pub struct ExternalTransaction {
 }
 
 #[inline]
+/// "Bridges" Asset Definition ID.
 pub fn bridges_asset_definition_id() -> <AssetDefinition as Identifiable>::Id {
     AssetDefinitionId::new("bridges_asset", "bridge")
 }
 
 #[inline]
+/// "Bridge" Asset Definition ID.
 pub fn bridge_asset_definition_id() -> <AssetDefinition as Identifiable>::Id {
     AssetDefinitionId::new("bridge_asset", "bridge")
 }
 
+/// "Bridge external assets" Asset Definition ID.
 #[inline]
 pub fn bridge_external_assets_asset_definition_id() -> <AssetDefinition as Identifiable>::Id {
     AssetDefinitionId::new("bridge_external_assets_asset", "bridge")
 }
 
+/// "Bridge outgoing external transactions" Asset Definition ID.
 #[inline]
 pub fn bridge_incoming_external_transactions_asset_definition_id(
 ) -> <AssetDefinition as Identifiable>::Id {
     AssetDefinitionId::new("bridge_incoming_external_transactions_asset", "bridge")
 }
 
+/// "Bridge incoming external transactions" Asset Definition ID.
 #[inline]
 pub fn bridge_outgoing_external_transactions_asset_definition_id(
 ) -> <AssetDefinition as Identifiable>::Id {

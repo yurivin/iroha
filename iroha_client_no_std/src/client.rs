@@ -1,16 +1,8 @@
 // use crate::config::Configuration;
 use crate::prelude::*;
-use crate::torii::uri;
 // use crate::crypto::KeyPair;
 // // use iroha_derive::log;
 // use iroha_network::{prelude::*, Network};
-use crate::alloc::string::ToString;
-use alloc::{string::String, vec::Vec};
-use core::{
-    convert::TryFrom,
-    fmt::{self, Debug, Formatter},
-};
-use parity_scale_codec::{Decode, Encode};
 
 /*
 pub struct Client {

@@ -19,7 +19,6 @@ use iroha_derive::*;
 use iroha_network::mock::prelude::*;
 #[cfg(not(feature = "mock"))]
 use iroha_network::prelude::*;
-use std::future::Future;
 use std::{convert::TryFrom, fmt::Debug, sync::Arc};
 
 /// Main network handler and the only entrypoint of the Iroha.
@@ -119,7 +118,7 @@ impl Torii {
         };
         let state = Arc::new(RwLock::new(state));
         let s = state.clone();
-        let jh = std::thread::spawn(move || {
+        let _jh = std::thread::spawn(move || {
             tokio::runtime::Runtime::new()
                 .unwrap()
                 .block_on(Self::http_listen(s))

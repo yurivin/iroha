@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 pub fn permission_asset_definition_id() -> AssetDefinitionId {
     AssetDefinitionId::new("permissions", "global")

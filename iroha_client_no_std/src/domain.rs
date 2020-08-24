@@ -5,7 +5,6 @@ use alloc::{collections::BTreeMap, string::String};
 // use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
 type Name = String;
-use alloc::vec::Vec;
 /// Named group of `Account` and `Asset` entities.
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Domain {

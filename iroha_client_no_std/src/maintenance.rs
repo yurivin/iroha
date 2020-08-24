@@ -2,7 +2,6 @@
 //! maintenance functions like Healthcheck, Monitoring, etc.
 
 // use iroha_derive::Io;
-use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};
 /// `Health` enumerates different variants of Iroha `Peer` states.
 /// Each variant can provide additional information if needed.

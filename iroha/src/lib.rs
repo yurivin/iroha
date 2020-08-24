@@ -1,6 +1,6 @@
 //! Iroha - A simple, enterprise-grade decentralized ledger.
 
-#![warn(missing_docs)]
+// FIXME: return #![warn(missing_docs)]
 #![warn(private_doc_tests)]
 pub mod account;
 pub mod asset;
@@ -28,8 +28,6 @@ pub mod tx;
 pub mod wsv;
 
 use crate::bridge::asset::ExternalAsset;
-use crate::domain::isi::DomainInstruction;
-use crate::peer::isi::PeerInstruction;
 use crate::tx::Payload;
 use crate::{
     block_sync::{message::Message as BlockSyncMessage, BlockSynchronizer},

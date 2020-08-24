@@ -3,7 +3,7 @@
 
 use crate::tx::ValidTransaction;
 use crate::{
-    crypto::{self, Hash, KeyPair, Signatures},
+    crypto::{Hash, Signatures},
     prelude::*,
 };
 use alloc::vec::Vec;

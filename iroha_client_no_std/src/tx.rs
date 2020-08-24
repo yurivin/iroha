@@ -2,9 +2,8 @@
 //!
 //! `RequestedTransaction` is the start of the Transaction lifecycle.
 
-use crate::crypto::{Hash, KeyPair, Signature};
+use crate::crypto::Signature;
 use crate::prelude::*;
-use chrono::Utc;
 // use iroha_derive::Io;
 use alloc::{string::String, vec::Vec};
 use parity_scale_codec::{Decode, Encode};

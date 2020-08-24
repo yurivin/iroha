@@ -122,7 +122,6 @@ pub mod isi {
 pub mod query {
     use super::*;
     use crate::query::IrohaQuery;
-    use chrono::Utc;
     // use iroha_derive::*;
     use parity_scale_codec::{Decode, Encode};
 

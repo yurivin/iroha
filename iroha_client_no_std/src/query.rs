@@ -1,8 +1,8 @@
 //! This module contains query related Iroha functionality.
 
 use crate::crypto::Signature;
-use crate::{account, asset, domain, prelude::*};
-use alloc::{string::String, vec::Vec};
+use crate::{account, asset, domain};
+use alloc::string::String;
 use parity_scale_codec::{Decode, Encode};
 
 /// I/O ready structure to send queries.

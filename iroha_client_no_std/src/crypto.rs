@@ -1,11 +1,10 @@
 //! This module contains structures and implementations related to the cryptographic parts of the
 //! Iroha.
-use crate::alloc::string::ToString;
 use alloc::collections::BTreeMap;
 use alloc::{string::String, vec::Vec};
 use core::ops::Deref;
 use core::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt::{self, Debug, Formatter},
 };
 use parity_scale_codec::{Decode, Encode};
