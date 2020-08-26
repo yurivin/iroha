@@ -38,10 +38,12 @@ pub enum IrohaQuery {
     GetFeeOnXYKPool(dex::query::GetFeeOnXYKPool),
     /// Query fee fraction that is treated as protocol fee.
     GetProtocolFeePartOnXYKPool(dex::query::GetProtocolFeePartOnXYKPool),
-    /// Query spot price of token via indicated exchange path.
-    GetSpotPriceOnXYKPool(dex::query::GetSpotPriceOnXYKPool),
+    /// Query spot price of token via indicated exchange path with desired input amount.
+    GetPriceForInputTokensOnXYKPool(dex::query::GetPriceForInputTokensOnXYKPool),
+    /// Query spot price of token via indicated exchange path with desired output amount.
+    GetPriceForOutputTokensOnXYKPool(dex::query::GetPriceForOutputTokensOnXYKPool),
     /// Query base and target token quantities that will be returned by burning pool tokens.
-    GetOwnedLiquidityOnXYKPoolInfo(dex::query::GetOwnedLiquidityOnXYKPoolInfo),
+    GetOwnedLiquidityOnXYKPool(dex::query::GetOwnedLiquidityOnXYKPool),
 }
 
 /// Result of queries execution.
@@ -67,10 +69,12 @@ pub enum QueryResult {
     GetFeeOnXYKPool(dex::query::GetFeeOnXYKPoolResult),
     /// Query fee fraction that is treated as protocol fee.
     GetProtocolFeePartOnXYKPool(dex::query::GetProtocolFeePartOnXYKPoolResult),
-    /// Query spot price of token via indicated exchange path.
-    GetSpotPriceOnXYKPool(dex::query::GetSpotPriceOnXYKPoolResult),
+    /// Query price of token via indicated exchange path, indicate desired input amount.
+    GetPriceForInputTokensOnXYKPool(dex::query::GetPriceOnXYKPoolResult),
+    /// Query price of token via indicated exchange path, indicate desired output amount.
+    GetPriceForOutputTokensOnXYKPool(dex::query::GetPriceOnXYKPoolResult),
     /// Query base and target token quantities that will be returned by burning pool tokens.
-    GetOwnedLiquidityOnXYKPoolInfo(dex::query::GetOwnedLiquidityOnXYKPoolInfoResult),
+    GetOwnedLiquidityOnXYKPool(dex::query::GetOwnedLiquidityOnXYKPoolResult),
 }
 
 impl IrohaQuery {
@@ -89,8 +93,9 @@ impl IrohaQuery {
             IrohaQuery::GetXYKPoolInfo(query) => query.execute(world_state_view),
             IrohaQuery::GetFeeOnXYKPool(query) => query.execute(world_state_view),
             IrohaQuery::GetProtocolFeePartOnXYKPool(query) => query.execute(world_state_view),
-            IrohaQuery::GetSpotPriceOnXYKPool(query) => query.execute(world_state_view),
-            IrohaQuery::GetOwnedLiquidityOnXYKPoolInfo(query) => query.execute(world_state_view),
+            IrohaQuery::GetPriceForInputTokensOnXYKPool(query) => query.execute(world_state_view),
+            IrohaQuery::GetPriceForOutputTokensOnXYKPool(query) => query.execute(world_state_view),
+            IrohaQuery::GetOwnedLiquidityOnXYKPool(query) => query.execute(world_state_view),
         }
     }
 }

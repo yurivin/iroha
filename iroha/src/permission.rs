@@ -16,6 +16,7 @@ pub enum Permission {
     Anything,
     AddDomain,
     AddListener,
+    InitalizeDEX,
     ManageDEX(Option<<Domain as Identifiable>::Id>),
     RegisterAssetDefinition(Option<<Domain as Identifiable>::Id>),
     RegisterAccount(Option<<Domain as Identifiable>::Id>),
@@ -78,6 +79,7 @@ pub mod isi {
         CanAnything(<Account as Identifiable>::Id),
         CanAddListener(<Account as Identifiable>::Id),
         CanAddDomain(<Account as Identifiable>::Id),
+        CanInitializeDEX(<Account as Identifiable>::Id),
         CanManageDEX(
             <Account as Identifiable>::Id,
             Option<<Domain as Identifiable>::Id>,
@@ -129,6 +131,7 @@ pub mod isi {
                 CanAnything(authority_account_id)
                 | CanAddDomain(authority_account_id)
                 | CanAddListener(authority_account_id)
+                | CanInitializeDEX(authority_account_id)
                 | CanManageDEX(authority_account_id, ..)
                 | CanRegisterAccount(authority_account_id, ..)
                 | CanRegisterAssetDefinition(authority_account_id, ..)
@@ -155,6 +158,7 @@ pub mod isi {
                 PermissionInstruction::CanAnything(_) => Permission::Anything,
                 PermissionInstruction::CanAddDomain(_) => Permission::AddDomain,
                 PermissionInstruction::CanAddListener(_) => Permission::AddListener,
+                PermissionInstruction::CanInitializeDEX(_) => Permission::InitalizeDEX,
                 PermissionInstruction::CanManageDEX(_, option_domain_id) => {
                     Permission::ManageDEX(option_domain_id.clone())
                 }
