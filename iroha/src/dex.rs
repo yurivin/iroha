@@ -166,7 +166,7 @@ pub enum LiquiditySourceType {
 #[derive(Encode, Decode, Ord, PartialOrd, PartialEq, Eq, Clone, Debug, Io)]
 pub struct XYKPoolData {
     /// Asset definition of pool token belonging to given pool.
-    pool_token_asset_definition_id: <AssetDefinition as Identifiable>::Id,
+    pub pool_token_asset_definition_id: <AssetDefinition as Identifiable>::Id,
     /// Account that is used to store exchanged tokens, i.e. actual liquidity.
     storage_account_id: <Account as Identifiable>::Id,
     /// Account that is used to accumulate fees.
@@ -174,15 +174,15 @@ pub struct XYKPoolData {
     /// Account that will receive protocol fee part if enabled.
     fee_to: Option<<Account as Identifiable>::Id>,
     /// Fee for swapping tokens on pool, expressed in basis points.
-    fee: u16,
+    pub fee: u16,
     /// Fee fraction which is deduced from `fee` as protocol fee, expressed in basis points.
-    protocol_fee_part: u16,
+    pub protocol_fee_part: u16,
     /// Amount of active pool tokens.
-    pool_token_total_supply: u32,
+    pub pool_token_total_supply: u32,
     /// Amount of base tokens in the pool (currently stored in storage account).
-    base_asset_reserve: u32,
+    pub base_asset_reserve: u32,
     /// Amount of target tokens in the pool (currently stored in storage account).
-    target_asset_reserve: u32,
+    pub target_asset_reserve: u32,
     /// K (constant product) value, updated by latest liquidity operation.
     k_last: u32,
 }
@@ -409,7 +409,6 @@ pub mod isi {
                         world_state_view,
                     )
                 }
-
                 DEXInstruction::SetProtocolFeePartOnXYKPool(
                     liquidity_source_id,
                     protocol_fee_part,
@@ -508,6 +507,9 @@ pub mod isi {
             let dex_base_asset_id = get_dex(&domain_name, world_state_view)?
                 .base_asset_id
                 .clone();
+            if base_asset_definition == target_asset_definition {
+                return Err("assets in token pair must be different".to_owned());
+            }
             let base_asset_domain =
                 get_domain(&base_asset_definition.domain_name, world_state_view)?;
             let target_asset_domain =
@@ -535,9 +537,6 @@ pub mod isi {
                     "target asset definition: {:?} not found",
                     target_asset_definition
                 ));
-            }
-            if base_asset_definition == target_asset_definition {
-                return Err("assets in token pair must be different".to_owned());
             }
             let dex = get_dex_mut(&domain_name, world_state_view)?;
             match dex.token_pairs.entry(token_pair.id.clone()) {
@@ -960,6 +959,7 @@ pub mod isi {
             ) -> Result<(), String> {
                 let liquidity_source =
                     get_liquidity_source(&self.liquidity_source_id, world_state_view)?;
+                let token_pair_id = liquidity_source.id.token_pair_id.clone();
                 let mut data = expect_xyk_pool_data(liquidity_source)?.clone();
                 // calculate appropriate deposit quantities to preserve pool proportions
                 let (amount_base, amount_target) = get_optimal_deposit_amounts(
@@ -972,7 +972,7 @@ pub mod isi {
                 )?;
                 // deposit tokens into the storage account
                 transfer_from(
-                    self.liquidity_source_id.token_pair_id.base_asset_id.clone(),
+                    token_pair_id.base_asset_id.clone(),
                     authority.clone(),
                     data.storage_account_id.clone(),
                     amount_base.clone(),
@@ -980,10 +980,7 @@ pub mod isi {
                     world_state_view,
                 )?;
                 transfer_from(
-                    self.liquidity_source_id
-                        .token_pair_id
-                        .target_asset_id
-                        .clone(),
+                    token_pair_id.target_asset_id.clone(),
                     authority.clone(),
                     data.storage_account_id.clone(),
                     amount_target.clone(),
@@ -993,7 +990,7 @@ pub mod isi {
                 // mint pool_token for sender based on deposited amount
                 data.mint_pool_token_with_fee(
                     self.pool_tokens_to,
-                    self.liquidity_source_id.token_pair_id.clone(),
+                    token_pair_id,
                     amount_base,
                     amount_target,
                     world_state_view,
@@ -1298,7 +1295,7 @@ pub mod isi {
             /// Pool Identifier.
             pub liquidity_source_id: <LiquiditySource as Identifiable>::Id,
             /// Storage Account Identifier.
-            pub storage_account_id: <Account as Identifiable>::Id,
+            storage_account_id: <Account as Identifiable>::Id,
             /// Amount of either Base or Target asset to be transferred to next account in chain.
             pub asset_output: PairAmount,
             /// Amount of either Base or Target asset to be transferred to fee-storage account.
@@ -2966,27 +2963,27 @@ pub mod isi {
                 .expect("add liquidity failed");
 
             if let QueryResult::GetOwnedLiquidityOnXYKPool(result) =
-                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_a)
+                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_a, None)
                     .query
                     .execute(&testkit.world_state_view)
-                    .expect("faile to get owned liquidity")
+                    .expect("failed to get owned liquidity")
             {
                 // amounts are less for initial provider due to minimum liquidity
                 assert_eq!(result.base_asset_amount, 4154);
                 assert_eq!(result.target_asset_amount, 5816);
-                assert_eq!(result.pool_token_amount, 4916);
+                assert_eq!(result.pool_tokens_after_withdrawal, 0);
             } else {
                 panic!("wrong enum variant");
             }
             if let QueryResult::GetOwnedLiquidityOnXYKPool(result) =
-                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_b)
+                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_b, None)
                     .query
                     .execute(&testkit.world_state_view)
-                    .expect("faile to get owned liquidity")
+                    .expect("failed to get owned liquidity")
             {
                 assert_eq!(result.base_asset_amount, 5000);
                 assert_eq!(result.target_asset_amount, 7000);
-                assert_eq!(result.pool_token_amount, 5916);
+                assert_eq!(result.pool_tokens_after_withdrawal, 0);
             } else {
                 panic!("wrong enum variant");
             }
@@ -3572,6 +3569,8 @@ pub mod query {
         pub liquidity_source_id: <LiquiditySource as Identifiable>::Id,
         /// Account holding pool tokens.
         pub account_id: <Account as Identifiable>::Id,
+        /// Pool token amount desired to remove.
+        pub pool_tokens_amount: Option<u32>,
     }
 
     /// Result of `GetOwnedLiquidityOnXYKPool` execution.
@@ -3581,8 +3580,10 @@ pub mod query {
         pub base_asset_amount: u32,
         /// Amount of target asset.
         pub target_asset_amount: u32,
-        /// Amount of pool token.
-        pub pool_token_amount: u32,
+        /// Pool tokens remaining after withdrawal.
+        pub pool_tokens_after_withdrawal: u32,
+        /// Pool tokens remaining before withdrawal.
+        pub pool_tokens_before_withdrawal: u32,
     }
 
     impl GetOwnedLiquidityOnXYKPool {
@@ -3590,10 +3591,12 @@ pub mod query {
         pub fn build_request(
             liquidity_source_id: <LiquiditySource as Identifiable>::Id,
             account_id: <Account as Identifiable>::Id,
+            pool_tokens_amount: Option<u32>,
         ) -> QueryRequest {
             let query = GetOwnedLiquidityOnXYKPool {
                 liquidity_source_id,
                 account_id,
+                pool_tokens_amount,
             };
             unsigned_query_request(query.into())
         }
@@ -3604,34 +3607,45 @@ pub mod query {
         fn execute(&self, world_state_view: &WorldStateView) -> Result<QueryResult, String> {
             let liquidity_source =
                 get_liquidity_source(&self.liquidity_source_id, world_state_view)?;
+            let token_pair_id = &liquidity_source.id.token_pair_id;
             let pool_data = expect_xyk_pool_data(liquidity_source)?;
             let base_asset_balance = get_asset_quantity(
                 pool_data.storage_account_id.clone(),
-                self.liquidity_source_id.token_pair_id.base_asset_id.clone(),
+                token_pair_id.base_asset_id.clone(),
                 world_state_view,
             )?;
             let target_asset_balance = get_asset_quantity(
                 pool_data.storage_account_id.clone(),
-                self.liquidity_source_id
-                    .token_pair_id
-                    .target_asset_id
-                    .clone(),
+                token_pair_id.target_asset_id.clone(),
                 world_state_view,
             )?;
-            let pool_token_quantity = get_asset_quantity(
+            let pool_tokens_balance = get_asset_quantity(
                 self.account_id.clone(),
                 pool_data.pool_token_asset_definition_id.clone(),
                 world_state_view,
             )?;
+            let pool_tokens_desired = match self.pool_tokens_amount {
+                Some(amount) => {
+                    if amount > pool_tokens_balance {
+                        return Err(format!(
+                            "insufficient pool tokens available: {} > {}",
+                            amount, pool_tokens_balance
+                        ));
+                    }
+                    amount
+                }
+                None => pool_tokens_balance,
+            };
             let base_asset_quantity =
-                pool_token_quantity * base_asset_balance / pool_data.pool_token_total_supply;
+                pool_tokens_desired * base_asset_balance / pool_data.pool_token_total_supply;
             let target_asset_quantity =
-                pool_token_quantity * target_asset_balance / pool_data.pool_token_total_supply;
+                pool_tokens_desired * target_asset_balance / pool_data.pool_token_total_supply;
             Ok(QueryResult::GetOwnedLiquidityOnXYKPool(
                 GetOwnedLiquidityOnXYKPoolResult {
                     base_asset_amount: base_asset_quantity,
                     target_asset_amount: target_asset_quantity,
-                    pool_token_amount: pool_token_quantity,
+                    pool_tokens_after_withdrawal: pool_tokens_balance - pool_tokens_desired,
+                    pool_tokens_before_withdrawal: pool_tokens_balance,
                 },
             ))
         }
