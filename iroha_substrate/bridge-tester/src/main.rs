@@ -138,6 +138,12 @@ async fn main() {
     // test incoming transfer
     let amount = 100u128;
     let nonce = 0u8;
+
+    let signer = EdPair::from_seed(&[
+        18, 182, 246, 209, 68, 27, 219, 111, 25, 143, 14, 178, 64, 212, 107, 38, 113, 40, 79, 226,
+        81, 217, 198, 102, 12, 68, 238, 115, 162, 63, 242, 255,
+    ]);
+    let api = Api::new(format!("ws://{}", url)).set_signer(signer);
     let request_transfer: UncheckedExtrinsicV4<_> = compose_extrinsic!(
         api.clone(),
         "IrohaBridge",

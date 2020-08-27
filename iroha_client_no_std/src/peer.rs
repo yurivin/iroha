@@ -15,11 +15,11 @@ use alloc::{
 };
 // use iroha_derive::*;
 use parity_scale_codec::{Decode, Encode};
+#[cfg(feature = "std")]
 use serde::Deserialize;
 /// Peer's identification.
-#[derive(
-    Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Default, Deserialize,
-)]
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Default)]
 pub struct PeerId {
     /// Address of the Peer's entrypoint.
     pub address: String,
