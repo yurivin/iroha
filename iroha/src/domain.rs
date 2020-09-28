@@ -29,6 +29,7 @@ impl Domain {
             name,
             accounts: BTreeMap::new(),
             asset_definitions: BTreeMap::new(),
+            #[cfg(feature = "dex")]
             dex: None,
         }
     }

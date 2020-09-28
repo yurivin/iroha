@@ -69,18 +69,19 @@ pub fn log(attr: TokenStream, item: TokenStream) -> TokenStream {
         #vis #constness #unsafety #asyncness #abi fn #ident<#gen_params>(#params) #return_type
         #where_clause
         {
-            print!("{} {}[start]: ",
+            let log_level = <log::Level as std::str::FromStr>::from_str(#log_level).expect("Failed to parse log level.");
+            log::log!(log_level, "{} {}[start]: ",
                 std::time::SystemTime::now().duration_since(
                     std::time::SystemTime::UNIX_EPOCH
-                    ).expect("SystemTime before UNIX EPOCH.").as_millis(),
+                ).expect("SystemTime before UNIX EPOCH.").as_millis(),
                 #ident_str,
             );
             #arguments
             let result = #block;
-            println!("{} {}[end]: {:?}",
+            log::log!(log_level, "{} {}[end]: {:?}",
                 std::time::SystemTime::now().duration_since(
                     std::time::SystemTime::UNIX_EPOCH
-                    ).expect("SystemTime before UNIX EPOCH.").as_millis(),
+                ).expect("SystemTime before UNIX EPOCH.").as_millis(),
                 #ident_str,
                 &result
             );

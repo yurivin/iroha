@@ -60,6 +60,7 @@ impl Instruction {
             Instruction::Account(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Permission(origin) => Ok(origin.execute(world_state_view)?),
             Instruction::Event(origin) => Ok(origin.execute(authority, world_state_view)?),
+            #[cfg(feature = "dex")]
             Instruction::DEX(origin) => Ok(origin.execute(authority, world_state_view)?),
             Instruction::Compose(left, right) => {
                 left.execute(authority.clone(), world_state_view)?;

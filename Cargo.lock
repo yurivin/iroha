@@ -2668,6 +2668,7 @@ dependencies = [
  "futures 0.3.5",
  "heim",
  "hex-literal",
+ "integer-sqrt",
  "iroha_derive",
  "iroha_logger",
  "iroha_network",
@@ -2675,6 +2676,7 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.7.3",
  "rand_chacha 0.2.1",
+ "rust_decimal",
  "serde",
  "serde_json 1.0.57",
  "tempfile",
@@ -5301,6 +5303,16 @@ dependencies = [
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "rust_decimal"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9e81662973c7a8d9663e64a0de4cd642b89a21d64966e3d99606efdc5fb0cc6"
+dependencies = [
+ "num-traits 0.2.12",
+ "serde",
 ]
 
 [[package]]

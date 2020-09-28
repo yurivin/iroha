@@ -14,7 +14,7 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "cargo build --package substrate-iroha-bridge-node && ../../target/debug/substrate-iroha-bridge-node --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha --bin" # iroha > /dev/null"
+    command: bash -c "cargo build --package substrate-iroha-bridge-node && ../../target/debug/substrate-iroha-bridge-node --dev --ws-external & cd ../.. && RUST_LOG=error cargo run --package iroha" #> /dev/null"
   dev-manual:
     build:
       context: .

@@ -182,6 +182,8 @@ impl Iroha {
                 name: bridge_domain_name.clone(),
                 accounts: BTreeMap::new(),
                 asset_definitions: bridge_asset_definitions,
+                #[cfg(feature = "dex")]
+                dex: None
             };
             // domains.insert(domain_name, domain);
             domains.insert(bridge_domain_name, bridge_domain);
