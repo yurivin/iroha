@@ -1004,7 +1004,9 @@ pub mod isi {
                     (amount_a_desired, amount_b_optimal)
                 } else {
                     let amount_a_optimal = quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
-                    assert!(amount_a_optimal <= amount_a_desired);
+                    if !(amount_a_optimal <= amount_a_desired) {
+                        return Err("unable to fit proportions".to_owned());
+                    }
                     if !(amount_a_optimal >= amount_a_min) {
                         return Err("insufficient a amount".to_owned());
                     }
@@ -2122,10 +2124,10 @@ pub mod isi {
                     &pool_data.base_asset_reserve,
                     &pool_data.target_asset_reserve,
                     &pool_data.k_last);
-                assert_eq!(pool_data.pool_token_total_supply, pool_token_total_supply);
-                assert_eq!(pool_data.base_asset_reserve, base_asset_reserve);
-                assert_eq!(pool_data.target_asset_reserve, target_asset_reserve);
-                assert_eq!(pool_data.k_last, k_last);
+                debug_assert_eq!(pool_data.pool_token_total_supply, pool_token_total_supply);
+                debug_assert_eq!(pool_data.base_asset_reserve, base_asset_reserve);
+                debug_assert_eq!(pool_data.target_asset_reserve, target_asset_reserve);
+                debug_assert_eq!(pool_data.k_last, k_last);
             }
 
             fn check_xyk_pool_storage_account(
@@ -2169,8 +2171,8 @@ pub mod isi {
                         &base_asset.quantity,
                         &target_asset.quantity,
                     );
-                    assert_eq!(base_asset.quantity.clone(), base_asset_balance);
-                    assert_eq!(target_asset.quantity.clone(), target_asset_balance);
+                    debug_assert_eq!(base_asset.quantity.clone(), base_asset_balance);
+                    debug_assert_eq!(target_asset.quantity.clone(), target_asset_balance);
                 } else {
                     panic!("wrong enum variant returned for GetAccount");
                 }
@@ -2186,7 +2188,7 @@ pub mod isi {
                     "Checking Asset quantity for Account: {}, of Asset: {}, quantity: {}",
                     account, asset, quantity,
                 );
-                assert_eq!(quantity, amount);
+                debug_assert_eq!(quantity, amount);
             }
         }
 
@@ -2216,14 +2218,14 @@ pub mod isi {
 
             let dex_query_result =
                 get_dex(&domain_name, world_state_view).expect("query dex failed");
-            assert_eq!(&dex_query_result.id.domain_name, &domain_name);
+            debug_assert_eq!(&dex_query_result.id.domain_name, &domain_name);
 
             if let QueryResult::GetDEXList(dex_list_result) = GetDEXList::build_request()
                 .query
                 .execute(world_state_view)
                 .expect("failed to query dex list")
             {
-                assert_eq!(&dex_list_result.dex_list, &[dex_query_result.clone()]);
+                debug_assert_eq!(&dex_list_result.dex_list, &[dex_query_result.clone()]);
                 println!("Test Success: new dex initialized");
             } else {
                 panic!("wrong enum variant returned for GetDEXList");
@@ -2263,7 +2265,7 @@ pub mod isi {
                 &dex_owner_account.id,
                 &AssetDefinitionId::new("XOR", &domain_name)
             );
-            assert!(initialize_dex(
+            debug_assert!(initialize_dex(
                 &domain_name,
                 dex_owner_account.id.clone(),
                 AssetDefinitionId::new("XOR", &domain_name)
@@ -2277,7 +2279,7 @@ pub mod isi {
                 .execute(world_state_view)
                 .expect("failed to query dex list")
             {
-                assert_eq!(&dex_list_result.dex_list, &[]);
+                debug_assert_eq!(&dex_list_result.dex_list, &[]);
                 println!("Test Success: dex not initialized");
             } else {
                 panic!("wrong enum variant returned for GetDEXList");
@@ -2299,7 +2301,7 @@ pub mod isi {
             let token_pair = query_token_pair(token_pair_id.clone(), &mut testkit.world_state_view)
                 .expect("failed to query token pair")
                 .clone();
-            assert_eq!(&token_pair_id, &token_pair.id);
+            debug_assert_eq!(&token_pair_id, &token_pair.id);
 
             if let QueryResult::GetTokenPairList(token_pair_list_result) =
                 GetTokenPairList::build_request(domain_name.clone())
@@ -2307,7 +2309,7 @@ pub mod isi {
                     .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair list")
             {
-                assert_eq!(
+                debug_assert_eq!(
                     &token_pair_list_result.token_pair_list,
                     &[token_pair.clone()]
                 );
@@ -2322,7 +2324,7 @@ pub mod isi {
                     .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair count")
             {
-                assert_eq!(token_pair_count_result.count, 1);
+                debug_assert_eq!(token_pair_count_result.count, 1);
             } else {
                 panic!("wrong token pair count");
             }
@@ -2341,7 +2343,7 @@ pub mod isi {
                     .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair list")
             {
-                assert!(&token_pair_list_result.token_pair_list.is_empty());
+                debug_assert!(&token_pair_list_result.token_pair_list.is_empty());
                 println!("Token pair removed");
             } else {
                 panic!("wrong enum variant returned for GetTokenPairList");
@@ -2353,7 +2355,7 @@ pub mod isi {
                     .execute(&mut testkit.world_state_view)
                     .expect("failed to query token pair count")
             {
-                assert_eq!(token_pair_count_result.count, 0);
+                debug_assert_eq!(token_pair_count_result.count, 0);
             } else {
                 panic!("wrong token pair count");
             }
@@ -2376,16 +2378,16 @@ pub mod isi {
             let xyk_pool = get_liquidity_source(&xyk_pool_id, &testkit.world_state_view).unwrap();
             let xyk_pool_data = expect_xyk_pool_data(&xyk_pool).unwrap();
 
-            assert_eq!(&storage_account_id, &xyk_pool_data.storage_account_id);
-            assert_eq!(
+            debug_assert_eq!(&storage_account_id, &xyk_pool_data.storage_account_id);
+            debug_assert_eq!(
                 &pool_token_asset_definition_id,
                 &xyk_pool_data.pool_token_asset_definition_id
             );
-            assert_eq!(0u32, xyk_pool_data.base_asset_reserve);
-            assert_eq!(0u32, xyk_pool_data.target_asset_reserve);
-            assert_eq!(0u32, xyk_pool_data.k_last);
-            assert_eq!(0u32, xyk_pool_data.pool_token_total_supply);
-            assert_eq!(None, xyk_pool_data.fee_to);
+            debug_assert_eq!(0u32, xyk_pool_data.base_asset_reserve);
+            debug_assert_eq!(0u32, xyk_pool_data.target_asset_reserve);
+            debug_assert_eq!(0u32, xyk_pool_data.k_last);
+            debug_assert_eq!(0u32, xyk_pool_data.pool_token_total_supply);
+            debug_assert_eq!(None, xyk_pool_data.fee_to);
             println!("Test Successful: pool created with default values");
         }
 
@@ -2445,42 +2447,42 @@ pub mod isi {
             let (amount_a, amount_b) =
                 xyk_pool::get_optimal_deposit_amounts(0, 0, 10000, 5000, 10000, 5000)
                     .expect("failed to get optimal asset amounts");
-            assert_eq!(amount_a, 10000);
-            assert_eq!(amount_b, 5000);
+            debug_assert_eq!(amount_a, 10000);
+            debug_assert_eq!(amount_b, 5000);
             // add liquidity with same proportions
             let (amount_a, amount_b) =
                 xyk_pool::get_optimal_deposit_amounts(10000, 5000, 10000, 5000, 10000, 5000)
                     .expect("failed to get optimal asset amounts");
-            assert_eq!(amount_a, 10000);
-            assert_eq!(amount_b, 5000);
+            debug_assert_eq!(amount_a, 10000);
+            debug_assert_eq!(amount_b, 5000);
             // add liquidity with different proportions
             let (amount_a, amount_b) =
                 xyk_pool::get_optimal_deposit_amounts(10000, 5000, 5000, 10000, 0, 0)
                     .expect("failed to get optimal asset amounts");
-            assert_eq!(amount_a, 5000);
-            assert_eq!(amount_b, 2500);
+            debug_assert_eq!(amount_a, 5000);
+            debug_assert_eq!(amount_b, 2500);
             // add liquidity `b_optimal>b_desired` branch
             let (amount_a, amount_b) =
                 xyk_pool::get_optimal_deposit_amounts(10000, 5000, 5000, 2000, 0, 0)
                     .expect("failed to get optimal asset amounts");
-            assert_eq!(amount_a, 4000);
-            assert_eq!(amount_b, 2000);
+            debug_assert_eq!(amount_a, 4000);
+            debug_assert_eq!(amount_b, 2000);
         }
 
         #[test]
         fn test_xyk_pool_quote_should_pass() {
             let amount_b_optimal =
                 xyk_pool::quote(2000, 5000, 10000).expect("failed to calculate proportion");
-            assert_eq!(amount_b_optimal, 4000);
+            debug_assert_eq!(amount_b_optimal, 4000);
             let amount_b_optimal =
                 xyk_pool::quote(1, 5000, 10000).expect("failed to calculate proportion");
-            assert_eq!(amount_b_optimal, 2);
+            debug_assert_eq!(amount_b_optimal, 2);
             let result = xyk_pool::quote(0, 5000, 10000).unwrap_err();
-            assert_eq!(result, "insufficient amount");
+            debug_assert_eq!(result, "insufficient amount");
             let result = xyk_pool::quote(1000, 5000, 0).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             let result = xyk_pool::quote(1000, 0, 10000).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
         }
 
         #[test]
@@ -2612,30 +2614,30 @@ pub mod isi {
             // regular input
             let (amount_out, fee_out) =
                 xyk_pool::get_target_amount_out(2000, 5000, 5000, 30).unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(1425));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(6));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(1425));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(6));
             // zero inputs
             let result = xyk_pool::get_target_amount_out(0, 5000, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient input amount");
+            debug_assert_eq!(result, "insufficient input amount");
             let result = xyk_pool::get_target_amount_out(2000, 0, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             let result = xyk_pool::get_target_amount_out(2000, 5000, 0, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             // max values
             let (amount_out, fee_out) =
                 xyk_pool::get_target_amount_out(500000, std::u32::MAX, std::u32::MAX, 30).unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(498442));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(1500));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(498442));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(1500));
             let (amount_out, fee_out) =
                 xyk_pool::get_target_amount_out(250000, std::u32::MAX / 2, std::u32::MAX / 2, 30)
                     .unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(249221));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(750));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(249221));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(750));
             let (amount_out, fee_out) =
                 xyk_pool::get_target_amount_out(std::u32::MAX, std::u32::MAX, std::u32::MAX, 30)
                     .unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(2144257583));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(12884901));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(2144257583));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(12884901));
         }
 
         #[test]
@@ -2643,30 +2645,30 @@ pub mod isi {
             // regular input
             let (amount_out, fee_out) =
                 xyk_pool::get_base_amount_out(2000, 5000, 5000, 30).unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(1424));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(4));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(1424));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(4));
             // zero inputs
             let result = xyk_pool::get_base_amount_out(0, 5000, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient input amount");
+            debug_assert_eq!(result, "insufficient input amount");
             let result = xyk_pool::get_base_amount_out(2000, 0, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             let result = xyk_pool::get_base_amount_out(2000, 5000, 0, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             // max values
             let (amount_out, fee_out) =
                 xyk_pool::get_base_amount_out(500000, std::u32::MAX, std::u32::MAX, 30).unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(498442));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(1499));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(498442));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(1499));
             let (amount_out, fee_out) =
                 xyk_pool::get_base_amount_out(250000, std::u32::MAX / 2, std::u32::MAX / 2, 30)
                     .unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(249221));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(749));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(249221));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(749));
             let (amount_out, fee_out) =
                 xyk_pool::get_base_amount_out(std::u32::MAX, std::u32::MAX, std::u32::MAX, 30)
                     .unwrap();
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(2141041197));
-            assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(6442450));
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(2141041197));
+            debug_assert_eq!(fee_out, xyk_pool::PairAmount::BaseToken(6442450));
         }
 
         #[test]
@@ -2739,32 +2741,32 @@ pub mod isi {
             // regular input
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_base_amount_in(2000, 5000, 5000, 30).unwrap();
-            assert_eq!(amount_in, 3344);
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(2000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(11));
+            debug_assert_eq!(amount_in, 3344);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(2000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(11));
             // zero inputs
             let result = xyk_pool::get_base_amount_in(0, 5000, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient output amount");
+            debug_assert_eq!(result, "insufficient output amount");
             let result = xyk_pool::get_base_amount_in(2000, 0, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             let result = xyk_pool::get_base_amount_in(2000, 5000, 0, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             // max values
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_base_amount_in(500000, std::u32::MAX, std::u32::MAX, 30).unwrap();
-            assert_eq!(amount_in, 501563);
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(500000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(1505));
+            debug_assert_eq!(amount_in, 501563);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(500000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(1505));
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_base_amount_in(250000, std::u32::MAX / 2, std::u32::MAX / 2, 30)
                     .unwrap();
-            assert_eq!(amount_in, 250782);
-            assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(250000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(753));
+            debug_assert_eq!(amount_in, 250782);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::TargetToken(250000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(753));
             let result =
                 xyk_pool::get_base_amount_in(std::u32::MAX, std::u32::MAX, std::u32::MAX, 30)
                     .unwrap_err();
-            assert_eq!(result, "can't withdraw full reserve");
+            debug_assert_eq!(result, "can't withdraw full reserve");
         }
 
         #[test]
@@ -2772,32 +2774,32 @@ pub mod isi {
             // regular input
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_target_amount_in(2000, 5000, 5000, 30).unwrap();
-            assert_eq!(amount_in, 3351);
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(2000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(6));
+            debug_assert_eq!(amount_in, 3351);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(2000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(6));
             // zero inputs
             let result = xyk_pool::get_target_amount_in(0, 5000, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient output amount");
+            debug_assert_eq!(result, "insufficient output amount");
             let result = xyk_pool::get_target_amount_in(2000, 0, 7000, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             let result = xyk_pool::get_target_amount_in(2000, 5000, 0, 30).unwrap_err();
-            assert_eq!(result, "insufficient liquidity");
+            debug_assert_eq!(result, "insufficient liquidity");
             // max values
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_target_amount_in(500000, std::u32::MAX, std::u32::MAX, 30).unwrap();
-            assert_eq!(amount_in, 501563);
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(500000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(1504));
+            debug_assert_eq!(amount_in, 501563);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(500000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(1504));
             let (amount_in, amount_out, fee) =
                 xyk_pool::get_target_amount_in(250000, std::u32::MAX / 2, std::u32::MAX / 2, 30)
                     .unwrap();
-            assert_eq!(amount_in, 250782);
-            assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(250000));
-            assert_eq!(fee, xyk_pool::PairAmount::BaseToken(752));
+            debug_assert_eq!(amount_in, 250782);
+            debug_assert_eq!(amount_out, xyk_pool::PairAmount::BaseToken(250000));
+            debug_assert_eq!(fee, xyk_pool::PairAmount::BaseToken(752));
             let result =
                 xyk_pool::get_target_amount_in(std::u32::MAX, std::u32::MAX, std::u32::MAX, 30)
                     .unwrap_err();
-            assert_eq!(result, "can't withdraw full reserve");
+            debug_assert_eq!(result, "can't withdraw full reserve");
         }
 
         #[test]
@@ -3004,9 +3006,9 @@ pub mod isi {
                 .execute(&mut testkit.world_state_view)
                 .expect("failed to get price")
             {
-                assert_eq!(result.input_amount, 500);
-                assert_eq!(result.output_amount, 635);
-                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
+                debug_assert_eq!(result.input_amount, 500);
+                debug_assert_eq!(result.output_amount, 635);
+                debug_assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
                 println!(
                     "Got price: for path {:?}, requested input amount {}, received output amount {}",
                     &path, &result.input_amount, &result.output_amount
@@ -3024,9 +3026,9 @@ pub mod isi {
                 .execute(&mut testkit.world_state_view)
                 .expect("failed to get price")
             {
-                assert_eq!(result.input_amount, 500);
-                assert_eq!(result.output_amount, 635);
-                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 2);
+                debug_assert_eq!(result.input_amount, 500);
+                debug_assert_eq!(result.output_amount, 635);
+                debug_assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 2);
                 println!(
                     "Got price: for path {:?}, requested output amount {}, received input amount {}",
                     &path, &result.input_amount, &result.output_amount
@@ -3048,9 +3050,9 @@ pub mod isi {
                 .execute(&mut testkit.world_state_view)
                 .expect("failed to get price")
             {
-                assert_eq!(result.input_amount, 780);
-                assert_eq!(result.output_amount, 500);
-                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
+                debug_assert_eq!(result.input_amount, 780);
+                debug_assert_eq!(result.output_amount, 500);
+                debug_assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
                 println!(
                     "Got price: for path {:?}, requested input amount {}, received output amount {}",
                     &path, &result.input_amount, &result.output_amount
@@ -3068,9 +3070,9 @@ pub mod isi {
                 .execute(&mut testkit.world_state_view)
                 .expect("failed to get price")
             {
-                assert_eq!(result.input_amount, 780);
-                assert_eq!(result.output_amount, 500);
-                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
+                debug_assert_eq!(result.input_amount, 780);
+                debug_assert_eq!(result.output_amount, 500);
+                debug_assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
                 println!(
                     "Got price: for path {:?}, requested output amount {}, received input amount {}",
                     &path, &result.input_amount, &result.output_amount
@@ -3162,9 +3164,9 @@ pub mod isi {
                 .expect("failed to get owned liquidity")
             {
                 // amounts are less for initial provider due to minimum liquidity
-                assert_eq!(result.base_asset_amount, 4154);
-                assert_eq!(result.target_asset_amount, 5816);
-                assert_eq!(result.pool_tokens_after_withdrawal, 0);
+                debug_assert_eq!(result.base_asset_amount, 4154);
+                debug_assert_eq!(result.target_asset_amount, 5816);
+                debug_assert_eq!(result.pool_tokens_after_withdrawal, 0);
                 println!("Check owned liquidity: account {}, owns {} of base and {} of target on xyk pool {} in domain {}",
                     &account_id_a, result.base_asset_amount, result.target_asset_amount, &xyk_pool_id.token_pair_id.get_symbol(), &xyk_pool_id.token_pair_id.dex_id.domain_name
                 );
@@ -3181,9 +3183,9 @@ pub mod isi {
                 .execute(&testkit.world_state_view)
                 .expect("failed to get owned liquidity")
             {
-                assert_eq!(result.base_asset_amount, 5000);
-                assert_eq!(result.target_asset_amount, 7000);
-                assert_eq!(result.pool_tokens_after_withdrawal, 0);
+                debug_assert_eq!(result.base_asset_amount, 5000);
+                debug_assert_eq!(result.target_asset_amount, 7000);
+                debug_assert_eq!(result.pool_tokens_after_withdrawal, 0);
                 println!("Check owned liquidity: account {}, owns {} of base and {} of target on xyk pool {} in domain {}",
                     &account_id_b, result.base_asset_amount, result.target_asset_amount, &xyk_pool_id.token_pair_id.get_symbol(), &xyk_pool_id.token_pair_id.dex_id.domain_name
                 );
