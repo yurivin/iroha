@@ -34,7 +34,6 @@ fn main() {
         .subcommand(
             maintenance::build_app(),
             )
-        )
         .subcommand(
             dex::build_app(),
         )
@@ -226,13 +225,22 @@ mod account {
         if let Some(ref matches) = matches.subcommand_matches(ADD_TRANSFER_PERMISSION) {
             if let Some(account_id) = matches.value_of(ACCOUNT_ID) {
                 if let Some(asset_definition_id) = matches.value_of(ASSET_DEFINITION_ID) {
+                    println!(
+                        "Adding transfer permission for account: {} to transfer asset: {}",
+                        account_id, asset_definition_id
+                    );
                     add_transfer_permission(asset_definition_id, account_id);
                 }
             }
         }
     }
 
-    fn create_account(account_name: &str, domain_name: &str, public_key: &str) {
+    fn create_account(
+        account_name: &str,
+        domain_name: &str,
+        public_key: &str,
+        configuration: &Configuration,
+    ) {
         let public_key = util::public_key_from_str(public_key).unwrap();
         let create_account = isi::Register {
             object: Account::with_signatory(account_name, domain_name, public_key),

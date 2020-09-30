@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use std::mem;
 
 const STORAGE_ACCOUNT_NAME: &str = "STORE";
-const FEE_ACCOUNT_NAME: &str = "FEE-STORE";
 const XYK_POOL: &str = "XYKPOOL";
 const MINIMUM_LIQUIDITY: u32 = 1000;
 const MAX_BASIS_POINTS: u16 = 10000;
@@ -167,10 +166,8 @@ pub enum LiquiditySourceType {
 pub struct XYKPoolData {
     /// Asset definition of pool token belonging to given pool.
     pub pool_token_asset_definition_id: <AssetDefinition as Identifiable>::Id,
-    /// Account that is used to store exchanged tokens, i.e. actual liquidity.
+    /// Account that is used to store pool reserves, i.e. actual liquidity.
     storage_account_id: <Account as Identifiable>::Id,
-    /// Account that is used to accumulate fees.
-    fee_account_id: <Account as Identifiable>::Id,
     /// Account that will receive protocol fee part if enabled.
     fee_to: Option<<Account as Identifiable>::Id>,
     /// Fee for swapping tokens on pool, expressed in basis points.
@@ -192,12 +189,10 @@ impl XYKPoolData {
     pub fn new(
         pool_token_asset_definition_id: <AssetDefinition as Identifiable>::Id,
         storage_account_id: <Account as Identifiable>::Id,
-        fee_account_id: <Account as Identifiable>::Id,
     ) -> Self {
         XYKPoolData {
             pool_token_asset_definition_id,
             storage_account_id,
-            fee_account_id,
             fee_to: None,
             fee: 30,
             protocol_fee_part: 0,
@@ -210,6 +205,7 @@ impl XYKPoolData {
 }
 
 /// Try to unwrap reference `XYKPoolData` from `LiquiditySourceData` enum of `LiquiditySource` entity.
+#[allow(unreachable_patterns)]
 pub fn expect_xyk_pool_data(liquidity_source: &LiquiditySource) -> Result<&XYKPoolData, String> {
     match &liquidity_source.data {
         LiquiditySourceData::XYKPool(data) => Ok(data),
@@ -218,6 +214,7 @@ pub fn expect_xyk_pool_data(liquidity_source: &LiquiditySource) -> Result<&XYKPo
 }
 
 /// Try to unwrap mutable reference `XYKPoolData` from `LiquiditySourceData` enum of `LiquiditySource` entity.
+#[allow(unreachable_patterns)]
 pub fn expect_xyk_pool_data_mut(
     liquidity_source: &mut LiquiditySource,
 ) -> Result<&mut XYKPoolData, String> {
@@ -256,12 +253,10 @@ impl LiquiditySource {
         token_pair_id: <TokenPair as Identifiable>::Id,
         pool_token_asset_definition_id: <AssetDefinition as Identifiable>::Id,
         storage_account_id: <Account as Identifiable>::Id,
-        fee_account_id: <Account as Identifiable>::Id,
     ) -> Self {
         let data = LiquiditySourceData::XYKPool(XYKPoolData::new(
             pool_token_asset_definition_id,
             storage_account_id,
-            fee_account_id,
         ));
         let id = LiquiditySourceId::new(token_pair_id, LiquiditySourceType::XYKPool);
         LiquiditySource { id, data }
@@ -315,7 +310,7 @@ pub mod isi {
         /// Variant of instruction to set value in basis points that is deduced from swap fees as protocol fee.
         SetProtocolFeePartOnXYKPool(<LiquiditySource as Identifiable>::Id, u16),
         /// Variant of instruction to mint permissions for account.
-        /// TODO: this isi is debug-only and should be deleted when permission minting will be avaiable in core
+        /// TODO: this isi is debug-only and should be deleted when permission minting is elaborated in core
         AddTransferPermissionForAccount(
             <AssetDefinition as Identifiable>::Id,
             <Account as Identifiable>::Id,
@@ -623,16 +618,6 @@ pub mod isi {
             )
         }
 
-        /// Construct name of pool storage account based on TokenPair to which it belongs.
-        pub fn fee_account_name(token_pair_id: &<TokenPair as Identifiable>::Id) -> String {
-            format!(
-                "{} {} {}",
-                FEE_ACCOUNT_NAME,
-                XYK_POOL,
-                token_pair_id.get_symbol()
-            )
-        }
-
         /// Constructor of `Add<DEX, LiquiditySource>` ISI.
         ///
         /// Add new XYK Liquidity Pool for DEX with given `TokenPair`.
@@ -643,8 +628,6 @@ pub mod isi {
                 AssetDefinition::new(AssetDefinitionId::new(&asset_name, &domain_name));
             let storage_account_name = storage_account_name(&token_pair_id);
             let storage_account = Account::new(&storage_account_name, &domain_name);
-            let fee_account_name = fee_account_name(&token_pair_id);
-            let fee_account = Account::new(&fee_account_name, &domain_name);
             Instruction::If(
                 Box::new(Instruction::ExecuteQuery(IrohaQuery::GetTokenPair(
                     GetTokenPair {
@@ -664,19 +647,12 @@ pub mod isi {
                         destination_id: domain_name.clone(),
                     }
                     .into(),
-                    // register account for fees accumulation
-                    Register {
-                        object: fee_account.clone(),
-                        destination_id: domain_name.clone(),
-                    }
-                    .into(),
                     // create xyk pool for pair
                     Add {
                         object: LiquiditySource::new_xyk_pool(
                             token_pair_id.clone(),
                             pool_token_asset_definition.id.clone(),
                             storage_account.id.clone(),
-                            fee_account.id.clone(),
                         ),
                         destination_id: token_pair_id,
                     }
@@ -868,7 +844,6 @@ pub mod isi {
                 self.update(balance_base, balance_target, world_state_view)?;
 
                 if !(self.base_asset_reserve > 0 && self.target_asset_reserve > 0) {
-                    // TODO: this check is not present in original contract, consider if it's needed
                     return Err("Insufficient reserves.".to_string());
                 }
                 if self.fee_to.is_some() {
@@ -998,7 +973,7 @@ pub mod isi {
                 // update pool data
                 let liquidity_source =
                     get_liquidity_source_mut(&self.liquidity_source_id, world_state_view)?;
-                mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
+                let _val = mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
                 Ok(())
             }
         }
@@ -1029,7 +1004,7 @@ pub mod isi {
                     (amount_a_desired, amount_b_optimal)
                 } else {
                     let amount_a_optimal = quote(amount_b_desired.clone(), reserve_b, reserve_a)?;
-                    assert!(amount_a_optimal <= amount_a_desired); // TODO: consider not using assert
+                    assert!(amount_a_optimal <= amount_a_desired);
                     if !(amount_a_optimal >= amount_a_min) {
                         return Err("insufficient a amount".to_owned());
                     }
@@ -1124,7 +1099,7 @@ pub mod isi {
                 }
                 let liquidity_source =
                     get_liquidity_source_mut(&self.liquidity_source_id, world_state_view)?;
-                mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
+                let _val = mem::replace(expect_xyk_pool_data_mut(liquidity_source)?, data);
                 Ok(())
             }
         }
@@ -1670,32 +1645,8 @@ pub mod isi {
                     )?
                 }
             }
-            match swap_output.fee_output {
-                PairAmount::BaseToken(amount) => {
-                    if !(amount < pool_data.base_asset_reserve) {
-                        return Err("insufficient liquidity".to_owned());
-                    }
-                    transfer_from_unchecked(
-                        token_pair_id.base_asset_id.clone(),
-                        pool_data.storage_account_id.clone(),
-                        pool_data.fee_account_id.clone(),
-                        amount,
-                        world_state_view,
-                    )?
-                }
-                PairAmount::TargetToken(amount) => {
-                    if !(amount < pool_data.target_asset_reserve) {
-                        return Err("insufficient liquidity".to_owned());
-                    }
-                    transfer_from_unchecked(
-                        token_pair_id.target_asset_id.clone(),
-                        pool_data.storage_account_id.clone(),
-                        pool_data.fee_account_id.clone(),
-                        amount,
-                        world_state_view,
-                    )?
-                }
-            }
+            // swap_output.fee_output can be used to redirect fee from returning to pool
+            // into e.g. fee-storage account for alternative use.
             let base_balance = get_asset_quantity(
                 pool_data.storage_account_id.clone(),
                 token_pair_id.base_asset_id.clone(),
@@ -1706,44 +1657,10 @@ pub mod isi {
                 token_pair_id.target_asset_id.clone(),
                 world_state_view,
             )?;
-            // TODO: derive checks for new model
-            // let (base_amount_out, target_amount_out) = match swap_output.asset_output {
-            //     PairAmount::BaseToken(amount) => (amount, 0),
-            //     PairAmount::TargetToken(amount) => (0, amount),
-            // };
-            // let (base_fee_out, target_fee_out) = match swap_output.fee_output {
-            //     PairAmount::BaseToken(amount) => (amount, 0),
-            //     PairAmount::TargetToken(amount) => (0, amount),
-            // };
-            // let base_amount_in = if base_balance > pool_data.base_asset_reserve - base_amount_out {
-            //     base_balance - (pool_data.base_asset_reserve - base_amount_out)
-            // } else {
-            //     0
-            // };
-            // let target_amount_in =
-            //     if target_balance > pool_data.target_asset_reserve - target_amount_out {
-            //         target_balance - (pool_data.target_asset_reserve - target_amount_out)
-            //     } else {
-            //         0
-            //     };
-            // if !(base_amount_in > 0 || target_amount_in > 0) {
-            //     return Err("insufficient input amount".to_owned());
-            // }
-            // let base_balance_adjusted = (base_balance as u128 * MAX_BASIS_POINTS as u128)
-            //     - (base_amount_in as u128 * pool_data.fee as u128);
-            // let target_balance_adjusted = (target_balance as u128 * MAX_BASIS_POINTS as u128)
-            //     - (target_amount_in as u128 * pool_data.fee as u128);
-            // if !(base_balance_adjusted * target_balance_adjusted
-            //     >= pool_data.base_asset_reserve as u128
-            //         * pool_data.target_asset_reserve as u128
-            //         * (MAX_BASIS_POINTS as u128).pow(2))
-            // {
-            //     return Err("k error".to_owned());
-            // }
             pool_data.update(base_balance, target_balance, world_state_view)?;
             let xyk_pool =
                 get_liquidity_source_mut(&swap_output.liquidity_source_id, world_state_view)?;
-            mem::replace(expect_xyk_pool_data_mut(xyk_pool)?, pool_data);
+            let _val = mem::replace(expect_xyk_pool_data_mut(xyk_pool)?, pool_data);
             Ok(())
         }
 
@@ -1901,7 +1818,7 @@ pub mod isi {
     }
 
     /// Mint permission for account.
-    /// TODO: this is temporary function made for debug purposes, remove when permission minting is avaiable in core
+    /// TODO: this is temporary function made for debug purposes, remove when permission minting is elaborated in core
     pub fn add_transfer_permission_for_account_execute(
         asset_definition_id: <AssetDefinition as Identifiable>::Id,
         account_id: <Account as Identifiable>::Id,
@@ -2031,6 +1948,12 @@ pub mod isi {
             fn initialize_dex(&mut self) {
                 let world_state_view = &mut self.world_state_view;
 
+                println!(
+                    "Initializing DEX in domain: {}, with owner: {}, base_asset: {}",
+                    &self.domain_name,
+                    &self.dex_owner_account_id,
+                    &self.base_asset_id.clone()
+                );
                 // initialize dex in domain
                 initialize_dex(
                     &self.domain_name,
@@ -2042,11 +1965,13 @@ pub mod isi {
             }
 
             fn register_domain(&mut self, domain_name: &str) {
+                println!("Register Domain with name: {}", domain_name,);
                 let domain = Domain::new(domain_name.to_owned());
                 self.world_state_view.add_domain(domain);
             }
 
             fn register_asset(&mut self, asset: &str) -> <AssetDefinition as Identifiable>::Id {
+                println!("Register Asset with Id: {}", asset);
                 let world_state_view = &mut self.world_state_view;
                 let asset_definition = AssetDefinition::new(AssetDefinitionId::from(asset));
                 let domain = world_state_view
@@ -2066,6 +1991,10 @@ pub mod isi {
                 base_asset: &str,
                 target_asset: &str,
             ) -> <TokenPair as Identifiable>::Id {
+                println!(
+                    "Create Token Pair with base asset: {}, target asset: {}",
+                    base_asset, target_asset
+                );
                 let world_state_view = &mut self.world_state_view;
                 let asset_definition_a_id = AssetDefinitionId::from(base_asset);
                 let asset_definition_b_id = AssetDefinitionId::from(target_asset);
@@ -2089,6 +2018,10 @@ pub mod isi {
             }
 
             fn mint_asset(&mut self, asset: &str, account: &str, quantity: u32) {
+                println!(
+                    "Mint Asset with Id: {}, for Account: {}, with quantity: {}",
+                    asset, account, quantity
+                );
                 let asset_definition_id = AssetDefinitionId::from(asset);
                 let account_id = AccountId::from(account);
                 let asset_id = AssetId::new(asset_definition_id, account_id);
@@ -2105,6 +2038,11 @@ pub mod isi {
                 <Account as Identifiable>::Id,
                 <AssetDefinition as Identifiable>::Id,
             ) {
+                println!(
+                    "Create XYK Pool in Domain: {}, for pair: {}",
+                    &token_pair_id.dex_id.domain_name,
+                    &token_pair_id.get_symbol()
+                );
                 xyk_pool::create(token_pair_id.clone())
                     .execute(
                         self.dex_owner_account_id.clone(),
@@ -2129,6 +2067,7 @@ pub mod isi {
             }
 
             fn create_account(&mut self, account: &str) -> <Account as Identifiable>::Id {
+                println!("Create Account with Id: {}", account);
                 let world_state_view = &mut self.world_state_view;
                 let domain = world_state_view
                     .read_domain(&self.domain_name)
@@ -2149,6 +2088,10 @@ pub mod isi {
             }
 
             fn add_transfer_permission(&mut self, account: &str, asset: &str) {
+                println!(
+                    "Add transfer permission for Account: {}, to transfer asset: {}",
+                    account, asset
+                );
                 let world_state_view = &mut self.world_state_view;
                 let account_id = AccountId::from(account);
                 let asset_definition_id = AssetDefinitionId::from(asset);
@@ -2165,9 +2108,20 @@ pub mod isi {
                 k_last: u32,
                 liquidity_source_id: &<LiquiditySource as Identifiable>::Id,
             ) {
+                println!(
+                    "Starting checking XYK Pool state: in domain {} for pair {}",
+                    &liquidity_source_id.token_pair_id.dex_id.domain_name,
+                    &liquidity_source_id.token_pair_id.get_symbol()
+                );
                 let liquidity_source =
                     get_liquidity_source(liquidity_source_id, &self.world_state_view).unwrap();
                 let pool_data = expect_xyk_pool_data(liquidity_source).unwrap();
+
+                println!("Checking XYK Pool state - pool token total supply: {}, base asset reserve: {}, target asset reserve: {}, k last: {}", 
+                    &pool_data.pool_token_total_supply,
+                    &pool_data.base_asset_reserve,
+                    &pool_data.target_asset_reserve,
+                    &pool_data.k_last);
                 assert_eq!(pool_data.pool_token_total_supply, pool_token_total_supply);
                 assert_eq!(pool_data.base_asset_reserve, base_asset_reserve);
                 assert_eq!(pool_data.target_asset_reserve, target_asset_reserve);
@@ -2180,6 +2134,11 @@ pub mod isi {
                 target_asset_balance: u32,
                 liquidity_source_id: &<LiquiditySource as Identifiable>::Id,
             ) {
+                println!(
+                    "Starting checking XYK Pool Storage: in domain {} for pair {}",
+                    &liquidity_source_id.token_pair_id.dex_id.domain_name,
+                    &liquidity_source_id.token_pair_id.get_symbol()
+                );
                 let liquidity_source =
                     get_liquidity_source(liquidity_source_id, &self.world_state_view).unwrap();
                 let pool_data = expect_xyk_pool_data(liquidity_source).unwrap();
@@ -2206,30 +2165,15 @@ pub mod isi {
                         .assets
                         .get(&storage_target_asset_id)
                         .expect("failed to get target asset");
+                    println!("Checking XYK Pool Storage - base asset reserve: {}, target asset reserve: {}", 
+                        &base_asset.quantity,
+                        &target_asset.quantity,
+                    );
                     assert_eq!(base_asset.quantity.clone(), base_asset_balance);
                     assert_eq!(target_asset.quantity.clone(), target_asset_balance);
                 } else {
                     panic!("wrong enum variant returned for GetAccount");
                 }
-            }
-
-            fn check_xyk_pool_fee_storage_account(
-                &self,
-                asset: &str,
-                amount: u32,
-                liquidity_source_id: &<LiquiditySource as Identifiable>::Id,
-            ) {
-                let liquidity_source =
-                    get_liquidity_source(liquidity_source_id, &self.world_state_view).unwrap();
-                let pool_data = expect_xyk_pool_data(liquidity_source).unwrap();
-                let asset_definition_id = AssetDefinitionId::from(asset);
-                let quantity = get_asset_quantity(
-                    pool_data.fee_account_id.clone(),
-                    asset_definition_id,
-                    &self.world_state_view,
-                )
-                .unwrap();
-                assert_eq!(quantity, amount);
             }
 
             fn check_asset_amount(&self, account: &str, asset: &str, amount: u32) {
@@ -2238,18 +2182,30 @@ pub mod isi {
                 let quantity =
                     get_asset_quantity(account_id, asset_definition_id, &self.world_state_view)
                         .unwrap();
+                println!(
+                    "Checking Asset quantity for Account: {}, of Asset: {}, quantity: {}",
+                    account, asset, quantity,
+                );
                 assert_eq!(quantity, amount);
             }
         }
 
         #[test]
         fn test_initialize_dex_should_pass() {
+            println!("\n\nStarting Test: Initialize DEX");
+
             let mut testkit = TestKit::new();
             let domain_name = testkit.domain_name.clone();
 
             // get world state view and dex domain
             let world_state_view = &mut testkit.world_state_view;
 
+            println!(
+                "Initializing DEX in domain: {}, with owner: {}, base_asset: {}",
+                &domain_name,
+                &testkit.dex_owner_account_id,
+                &AssetDefinitionId::new("XOR", &domain_name)
+            );
             initialize_dex(
                 &domain_name,
                 testkit.dex_owner_account_id.clone(),
@@ -2267,7 +2223,8 @@ pub mod isi {
                 .execute(world_state_view)
                 .expect("failed to query dex list")
             {
-                assert_eq!(&dex_list_result.dex_list, &[dex_query_result.clone()])
+                assert_eq!(&dex_list_result.dex_list, &[dex_query_result.clone()]);
+                println!("Test Success: new dex initialized");
             } else {
                 panic!("wrong enum variant returned for GetDEXList");
             }
@@ -2275,6 +2232,7 @@ pub mod isi {
 
         #[test]
         fn test_initialize_dex_should_fail_with_permission_not_found() {
+            println!("\n\nStarting Test: Initialize DEX without permission");
             let mut testkit = TestKit::new();
             let domain_name = testkit.domain_name.clone();
 
@@ -2293,11 +2251,18 @@ pub mod isi {
                 .clone();
 
             // register dex owner account
+            println!("Registering account: {}", &dex_owner_account.id);
             let register_account = domain.register_account(dex_owner_account.clone());
             register_account
                 .execute(testkit.root_account_id.clone(), world_state_view)
                 .expect("failed to register dex owner account");
 
+            println!(
+                "Initializing DEX in domain: {}, with owner: {}, base_asset: {}",
+                &domain_name,
+                &dex_owner_account.id,
+                &AssetDefinitionId::new("XOR", &domain_name)
+            );
             assert!(initialize_dex(
                 &domain_name,
                 dex_owner_account.id.clone(),
@@ -2306,10 +2271,22 @@ pub mod isi {
             .execute(dex_owner_account.id.clone(), world_state_view)
             .unwrap_err()
             .contains("Error: Permission not found."));
+
+            if let QueryResult::GetDEXList(dex_list_result) = GetDEXList::build_request()
+                .query
+                .execute(world_state_view)
+                .expect("failed to query dex list")
+            {
+                assert_eq!(&dex_list_result.dex_list, &[]);
+                println!("Test Success: dex not initialized");
+            } else {
+                panic!("wrong enum variant returned for GetDEXList");
+            }
         }
 
         #[test]
         fn test_create_and_delete_token_pair_should_pass() {
+            println!("\n\nStarting Test: Create and delete token pair");
             let mut testkit = TestKit::new();
             let domain_name = testkit.domain_name.clone();
 
@@ -2319,7 +2296,6 @@ pub mod isi {
             testkit.register_asset("DOT#Polkadot");
             let token_pair_id = testkit.create_token_pair("XOR#Soramitsu", "DOT#Polkadot");
 
-            // TODO: rewrite into iroha query calls
             let token_pair = query_token_pair(token_pair_id.clone(), &mut testkit.world_state_view)
                 .expect("failed to query token pair")
                 .clone();
@@ -2334,7 +2310,8 @@ pub mod isi {
                 assert_eq!(
                     &token_pair_list_result.token_pair_list,
                     &[token_pair.clone()]
-                )
+                );
+                println!("Token pair created");
             } else {
                 panic!("wrong enum variant returned for GetTokenPairList");
             }
@@ -2350,6 +2327,7 @@ pub mod isi {
                 panic!("wrong token pair count");
             }
 
+            println!("Removing token pair: {}", token_pair_id.get_symbol());
             remove_token_pair(token_pair_id.clone())
                 .execute(
                     testkit.dex_owner_account_id.clone(),
@@ -2364,6 +2342,7 @@ pub mod isi {
                     .expect("failed to query token pair list")
             {
                 assert!(&token_pair_list_result.token_pair_list.is_empty());
+                println!("Token pair removed");
             } else {
                 panic!("wrong enum variant returned for GetTokenPairList");
             }
@@ -2378,10 +2357,12 @@ pub mod isi {
             } else {
                 panic!("wrong token pair count");
             }
+            println!("Test Success: Token pair created and removed");
         }
 
         #[test]
         fn test_xyk_pool_create_should_pass() {
+            println!("\n\nStarting Test: Create XYK Pool");
             let mut testkit = TestKit::new();
 
             testkit.initialize_dex();
@@ -2404,11 +2385,13 @@ pub mod isi {
             assert_eq!(0u32, xyk_pool_data.target_asset_reserve);
             assert_eq!(0u32, xyk_pool_data.k_last);
             assert_eq!(0u32, xyk_pool_data.pool_token_total_supply);
-            assert_eq!(None, xyk_pool_data.fee_to)
+            assert_eq!(None, xyk_pool_data.fee_to);
+            println!("Test Successful: pool created with default values");
         }
 
         #[test]
         fn test_xyk_pool_add_liquidity_should_pass() {
+            println!("\n\nStarting Test: Add liquidity to XYK Pool");
             let mut testkit = TestKit::new();
             testkit.initialize_dex();
             testkit.register_asset("XOR#Soramitsu");
@@ -2429,15 +2412,31 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "Trader@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from account
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
             testkit.check_xyk_pool_state(5916, 5000, 7000, 0, &xyk_pool_id);
             testkit.check_xyk_pool_storage_account(5000, 7000, &xyk_pool_id);
             testkit.check_asset_amount("Trader@Soramitsu", "XOR#Soramitsu", 0);
             testkit.check_asset_amount("Trader@Soramitsu", "DOT#Polkadot", 0);
             testkit.check_asset_amount("Trader@Soramitsu", &pool_token_id.to_string(), 4916);
+            println!("Test Successful: liquidity added")
         }
 
         #[test]
@@ -2484,10 +2483,9 @@ pub mod isi {
             assert_eq!(result, "insufficient liquidity");
         }
 
-        // TODO: tests with protocol fee on
-
         #[test]
         fn test_xyk_pool_remove_liquidity_should_pass() {
+            println!("\n\nStarting Test: Remove liquidity from XYK Pool");
             let mut testkit = TestKit::new();
 
             // prepare environment
@@ -2505,12 +2503,34 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "Trader@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from account
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                desired_target,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
             // burn minted pool token to receive pool tokens back
-            xyk_pool::remove_liquidity(xyk_pool_id.clone(), 4916, 0, 0)
+            let pool_tokens: u32 = 4916;
+            let base_min: u32 = 0;
+            let target_min: u32 = 0;
+            println!("Removing liquidity: domain {}, pair {}, pool tokens {}, min received base {}, min received target {}",
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                pool_tokens, base_min, target_min);
+            xyk_pool::remove_liquidity(xyk_pool_id.clone(), pool_tokens, base_min, target_min)
                 .execute(account_id.clone(), &mut testkit.world_state_view)
                 .expect("remove liquidity failed");
 
@@ -2519,10 +2539,12 @@ pub mod isi {
             testkit.check_asset_amount("Trader@Soramitsu", "XOR#Soramitsu", 4154);
             testkit.check_asset_amount("Trader@Soramitsu", "DOT#Polkadot", 5816);
             testkit.check_asset_amount("Trader@Soramitsu", &pool_token_id.to_string(), 0);
+            println!("Test Successful: liquidity removed from pool");
         }
 
         #[test]
         fn test_xyk_pool_swap_assets_in_should_pass() {
+            println!("\n\nStarting Test: Swap assets on XYK Pool with desired input amount");
             let mut testkit = TestKit::new();
 
             // prepare environment
@@ -2540,28 +2562,49 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "Trader@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from account
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
+            let amount_in: u32 = 2000;
+            let amount_out_min: u32 = 0;
+            println!(
+                "Swap exact tokens for tokens: account {}, desired input {}, min received {}",
+                &account_id, amount_in, amount_out_min
+            );
             xyk_pool::swap_exact_tokens_for_tokens(
                 DEXId::new(&testkit.domain_name),
                 vec![
                     token_pair_id.base_asset_id.clone(),
                     token_pair_id.target_asset_id.clone(),
                 ],
-                2000,
-                0,
+                amount_in,
+                amount_out_min,
             )
             .execute(account_id.clone(), &mut testkit.world_state_view)
             .expect("swap exact tokens for tokens failed");
 
-            testkit.check_xyk_pool_state(5916, 6994, 5005, 0, &xyk_pool_id);
-            testkit.check_xyk_pool_storage_account(6994, 5005, &xyk_pool_id);
-            testkit.check_xyk_pool_fee_storage_account("XOR#Soramitsu", 6, &xyk_pool_id);
+            testkit.check_xyk_pool_state(5916, 7000, 5005, 0, &xyk_pool_id);
+            testkit.check_xyk_pool_storage_account(7000, 5005, &xyk_pool_id);
             testkit.check_asset_amount("Trader@Soramitsu", "XOR#Soramitsu", 0);
             testkit.check_asset_amount("Trader@Soramitsu", "DOT#Polkadot", 1995);
             testkit.check_asset_amount("Trader@Soramitsu", &pool_token_id.to_string(), 4916);
+            println!("Test Successful: swap performed");
         }
 
         #[test]
@@ -2628,6 +2671,7 @@ pub mod isi {
 
         #[test]
         fn test_xyk_pool_swap_assets_out_should_pass() {
+            println!("\n\nStarting Test: Swap assets on XYK Pool with desired output amount");
             let mut testkit = TestKit::new();
 
             // prepare environment
@@ -2645,28 +2689,49 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "Trader@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from account
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
+            let amount_out: u32 = 1995;
+            let amount_in_max: u32 = std::u32::MAX;
+            println!(
+                "Swap tokens for exact tokens: account {}, desired output {}, max spent {}",
+                &account_id, amount_out, amount_in_max
+            );
             xyk_pool::swap_tokens_for_exact_tokens(
                 DEXId::new(&testkit.domain_name),
                 vec![
                     token_pair_id.base_asset_id.clone(),
                     token_pair_id.target_asset_id.clone(),
                 ],
-                1995,
-                std::u32::MAX,
+                amount_out,
+                amount_in_max,
             )
             .execute(account_id.clone(), &mut testkit.world_state_view)
             .expect("swap exact tokens for tokens failed");
 
-            testkit.check_xyk_pool_state(5916, 6993, 5005, 0, &xyk_pool_id);
-            testkit.check_xyk_pool_storage_account(6993, 5005, &xyk_pool_id);
-            testkit.check_xyk_pool_fee_storage_account("XOR#Soramitsu", 6, &xyk_pool_id);
+            testkit.check_xyk_pool_state(5916, 6999, 5005, 0, &xyk_pool_id);
+            testkit.check_xyk_pool_storage_account(6999, 5005, &xyk_pool_id);
             testkit.check_asset_amount("Trader@Soramitsu", "XOR#Soramitsu", 1);
             testkit.check_asset_amount("Trader@Soramitsu", "DOT#Polkadot", 1995);
             testkit.check_asset_amount("Trader@Soramitsu", &pool_token_id.to_string(), 4916);
+            println!("Test Successful: swap performed");
         }
 
         #[test]
@@ -2737,6 +2802,7 @@ pub mod isi {
 
         #[test]
         fn test_xyk_pool_two_liquidity_providers_one_trader_should_pass() {
+            println!("\n\nStarting Test: Usecase with two liquidity providers and one trader");
             let mut testkit = TestKit::new();
             testkit.initialize_dex();
             testkit.register_asset("XOR#Soramitsu");
@@ -2778,16 +2844,69 @@ pub mod isi {
             testkit.check_asset_amount("User B@Soramitsu", "DOT#Polkadot", 500);
             testkit.check_asset_amount("User C@Soramitsu", "KSM#Kusama", 2000);
 
-            xyk_pool::add_liquidity(xyk_pool_a_id.clone(), 6000, 4000, 0, 0)
-                .execute(account_a_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
-            xyk_pool::add_liquidity(xyk_pool_b_id.clone(), 6000, 3000, 0, 0)
-                .execute(account_a_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
-            xyk_pool::add_liquidity(xyk_pool_a_id.clone(), 500, 500, 0, 0)
-                .execute(account_b_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 6000;
+            let desired_target: u32 = 4000;
+            let base_min: u32 = 0;
+            let target_min: u32 = 0;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_a_id,
+                &xyk_pool_a_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_a_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_a_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_a_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
+            let desired_base: u32 = 6000;
+            let desired_target: u32 = 3000;
+            let base_min: u32 = 0;
+            let target_min: u32 = 0;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_a_id,
+                &xyk_pool_b_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_b_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_b_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_a_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
+
+            let desired_base: u32 = 500;
+            let desired_target: u32 = 500;
+            let base_min: u32 = 0;
+            let target_min: u32 = 0;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_b_id,
+                &xyk_pool_a_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_a_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_a_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_b_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
+
+            let amount_in: u32 = 2000;
+            let amount_out_min: u32 = 0u32;
+            println!(
+                "Swap exact tokens for tokens: account {}, desired input {}, min received {}",
+                &account_c_id, amount_in, amount_out_min
+            );
             xyk_pool::swap_exact_tokens_for_tokens(
                 DEXId::new("Soramitsu"),
                 vec![
@@ -2795,36 +2914,43 @@ pub mod isi {
                     AssetDefinitionId::from("XOR#Soramitsu"),
                     AssetDefinitionId::from("DOT#Polkadot"),
                 ],
-                2000,
-                0u32,
+                amount_in,
+                amount_out_min,
             )
             .execute(account_c_id.clone(), &mut testkit.world_state_view)
             .expect("swap exact tokens for tokens failed");
 
-            xyk_pool::remove_liquidity(xyk_pool_a_id.clone(), 407, 0, 0)
+            let pool_tokens: u32 = 407;
+            let base_min: u32 = 0;
+            let target_min: u32 = 0;
+            println!("Removing liquidity: domain {}, pair {}, pool tokens {}, min received base {}, min received target {}",
+                &xyk_pool_b_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_b_id.token_pair_id.get_symbol(),
+                pool_tokens, base_min, target_min);
+            xyk_pool::remove_liquidity(xyk_pool_a_id.clone(), pool_tokens, base_min, target_min)
                 .execute(account_b_id.clone(), &mut testkit.world_state_view)
                 .expect("add liquidity failed");
 
-            testkit.check_xyk_pool_state(4898, 8205, 2927, 0, &xyk_pool_a_id);
-            testkit.check_xyk_pool_state(4242, 3600, 5000, 0, &xyk_pool_b_id);
-            testkit.check_xyk_pool_storage_account(8205, 2927, &xyk_pool_a_id);
-            testkit.check_xyk_pool_storage_account(3600, 5000, &xyk_pool_b_id);
-            testkit.check_xyk_pool_fee_storage_account("XOR#Soramitsu", 7, &xyk_pool_a_id);
-            testkit.check_xyk_pool_fee_storage_account("XOR#Soramitsu", 7, &xyk_pool_b_id);
+            testkit.check_xyk_pool_state(4898, 8211, 2927, 0, &xyk_pool_a_id);
+            testkit.check_xyk_pool_state(4242, 3607, 5000, 0, &xyk_pool_b_id);
+            testkit.check_xyk_pool_storage_account(8211, 2927, &xyk_pool_a_id);
+            testkit.check_xyk_pool_storage_account(3607, 5000, &xyk_pool_b_id);
             testkit.check_asset_amount("User A@Soramitsu", "XOR#Soramitsu", 0);
             testkit.check_asset_amount("User A@Soramitsu", "DOT#Polkadot", 0);
             testkit.check_asset_amount("User A@Soramitsu", "KSM#Kusama", 0);
             testkit.check_asset_amount("User A@Soramitsu", &pool_token_a_id.to_string(), 3898);
             testkit.check_asset_amount("User A@Soramitsu", &pool_token_b_id.to_string(), 3242);
-            testkit.check_asset_amount("User B@Soramitsu", "XOR#Soramitsu", 681);
+            testkit.check_asset_amount("User B@Soramitsu", "XOR#Soramitsu", 682);
             testkit.check_asset_amount("User B@Soramitsu", "DOT#Polkadot", 410);
             testkit.check_asset_amount("User B@Soramitsu", &pool_token_a_id.to_string(), 0);
             testkit.check_asset_amount("User C@Soramitsu", "KSM#Kusama", 0);
             testkit.check_asset_amount("User C@Soramitsu", "DOT#Polkadot", 1163);
+            println!("Test Successful: usecase passed");
         }
 
         #[test]
         fn test_xyk_pool_get_price_should_pass() {
+            println!("\n\nStarting Test: Get price of tokens on XYK Pool");
             let mut testkit = TestKit::new();
             testkit.initialize_dex();
             testkit.register_asset("XOR#Soramitsu");
@@ -2845,9 +2971,24 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "Trader@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from account
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
             let path = vec![
                 AssetDefinitionId::from("XOR#Soramitsu"),
@@ -2866,6 +3007,10 @@ pub mod isi {
                 assert_eq!(result.input_amount, 500);
                 assert_eq!(result.output_amount, 635);
                 assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
+                println!(
+                    "Got price: for path {:?}, requested input amount {}, received output amount {}",
+                    &path, &result.input_amount, &result.output_amount
+                );
             } else {
                 panic!("wrong enum variant");
             }
@@ -2882,6 +3027,10 @@ pub mod isi {
                 assert_eq!(result.input_amount, 500);
                 assert_eq!(result.output_amount, 635);
                 assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 2);
+                println!(
+                    "Got price: for path {:?}, requested output amount {}, received input amount {}",
+                    &path, &result.input_amount, &result.output_amount
+                );
             } else {
                 panic!("wrong enum variant");
             }
@@ -2889,22 +3038,6 @@ pub mod isi {
                 AssetDefinitionId::from("DOT#Polkadot"),
                 AssetDefinitionId::from("XOR#Soramitsu"),
             ];
-            if let QueryResult::GetPriceForOutputTokensOnXYKPool(result) =
-                GetPriceForOutputTokensOnXYKPool::build_request(
-                    DEXId::new(&testkit.domain_name),
-                    path.clone(),
-                    500,
-                )
-                .query
-                .execute(&mut testkit.world_state_view)
-                .expect("failed to get price")
-            {
-                assert_eq!(result.input_amount, 780);
-                assert_eq!(result.output_amount, 500);
-                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
-            } else {
-                panic!("wrong enum variant");
-            }
             if let QueryResult::GetPriceForInputTokensOnXYKPool(result) =
                 GetPriceForInputTokensOnXYKPool::build_request(
                     DEXId::new(&testkit.domain_name),
@@ -2918,14 +3051,39 @@ pub mod isi {
                 assert_eq!(result.input_amount, 780);
                 assert_eq!(result.output_amount, 500);
                 assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
-            // TODO: elaborate boundaries for rounding errors, resulting in opposite functions mismatch
+                println!(
+                    "Got price: for path {:?}, requested input amount {}, received output amount {}",
+                    &path, &result.input_amount, &result.output_amount
+                );
             } else {
                 panic!("wrong enum variant");
             }
+            if let QueryResult::GetPriceForOutputTokensOnXYKPool(result) =
+                GetPriceForOutputTokensOnXYKPool::build_request(
+                    DEXId::new(&testkit.domain_name),
+                    path.clone(),
+                    500,
+                )
+                .query
+                .execute(&mut testkit.world_state_view)
+                .expect("failed to get price")
+            {
+                assert_eq!(result.input_amount, 780);
+                assert_eq!(result.output_amount, 500);
+                assert_eq!(result.amounts.last().unwrap().fee_output.amount(), 1);
+                println!(
+                    "Got price: for path {:?}, requested output amount {}, received input amount {}",
+                    &path, &result.input_amount, &result.output_amount
+                );
+            } else {
+                panic!("wrong enum variant");
+            }
+            println!("Test Successful: prices match")
         }
 
         #[test]
         fn test_xyk_pool_get_owned_liquidity_should_pass() {
+            println!("\n\n Starting Test: Get owned liquidity on XYK Pool");
             let mut testkit = TestKit::new();
             testkit.initialize_dex();
             testkit.register_asset("XOR#Soramitsu");
@@ -2955,38 +3113,84 @@ pub mod isi {
             testkit.mint_asset("DOT#Polkadot", "LP2@Soramitsu", 7000u32);
 
             // add minted tokens to the pool from accounts
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id_a.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
-            xyk_pool::add_liquidity(xyk_pool_id.clone(), 5000, 7000, 4000, 6000)
-                .execute(account_id_b.clone(), &mut testkit.world_state_view)
-                .expect("add liquidity failed");
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id_a,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id_a.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
+
+            let desired_base: u32 = 5000;
+            let desired_target: u32 = 7000;
+            let base_min: u32 = 4000;
+            let target_min: u32 = 6000;
+            println!("Adding liquidity: account {}, domain {}, pair {}, desired base {}, desired target {}, min base {}, min target {}",
+                &account_id_b,
+                &xyk_pool_id.token_pair_id.dex_id.domain_name,
+                &xyk_pool_id.token_pair_id.get_symbol(),
+                desired_base, desired_target, base_min, target_min);
+            xyk_pool::add_liquidity(
+                xyk_pool_id.clone(),
+                desired_base,
+                desired_target,
+                base_min,
+                target_min,
+            )
+            .execute(account_id_b.clone(), &mut testkit.world_state_view)
+            .expect("add liquidity failed");
 
             if let QueryResult::GetOwnedLiquidityOnXYKPool(result) =
-                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_a, None)
-                    .query
-                    .execute(&testkit.world_state_view)
-                    .expect("failed to get owned liquidity")
+                GetOwnedLiquidityOnXYKPool::build_request(
+                    xyk_pool_id.clone(),
+                    account_id_a.clone(),
+                    None,
+                )
+                .query
+                .execute(&testkit.world_state_view)
+                .expect("failed to get owned liquidity")
             {
                 // amounts are less for initial provider due to minimum liquidity
                 assert_eq!(result.base_asset_amount, 4154);
                 assert_eq!(result.target_asset_amount, 5816);
                 assert_eq!(result.pool_tokens_after_withdrawal, 0);
+                println!("Check owned liquidity: account {}, owns {} of base and {} of target on xyk pool {} in domain {}",
+                    &account_id_a, result.base_asset_amount, result.target_asset_amount, &xyk_pool_id.token_pair_id.get_symbol(), &xyk_pool_id.token_pair_id.dex_id.domain_name
+                );
             } else {
                 panic!("wrong enum variant");
             }
             if let QueryResult::GetOwnedLiquidityOnXYKPool(result) =
-                GetOwnedLiquidityOnXYKPool::build_request(xyk_pool_id.clone(), account_id_b, None)
-                    .query
-                    .execute(&testkit.world_state_view)
-                    .expect("failed to get owned liquidity")
+                GetOwnedLiquidityOnXYKPool::build_request(
+                    xyk_pool_id.clone(),
+                    account_id_b.clone(),
+                    None,
+                )
+                .query
+                .execute(&testkit.world_state_view)
+                .expect("failed to get owned liquidity")
             {
                 assert_eq!(result.base_asset_amount, 5000);
                 assert_eq!(result.target_asset_amount, 7000);
                 assert_eq!(result.pool_tokens_after_withdrawal, 0);
+                println!("Check owned liquidity: account {}, owns {} of base and {} of target on xyk pool {} in domain {}",
+                    &account_id_b, result.base_asset_amount, result.target_asset_amount, &xyk_pool_id.token_pair_id.get_symbol(), &xyk_pool_id.token_pair_id.dex_id.domain_name
+                );
             } else {
                 panic!("wrong enum variant");
             }
+            println!("Test Successful: data received");
         }
     }
 }
