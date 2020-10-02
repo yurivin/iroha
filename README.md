@@ -68,6 +68,10 @@ You can also discuss your concerns and proposals and simply chat about Iroha the
 * Submit issues and improvement suggestions via [Hyperledger Jira](https://jira.hyperledger.org/secure/CreateIssue!default.jspa) 
 * Subscribe to our [mailing list](https://lists.hyperledger.org/g/iroha) to receive the latest and most important news and spread your word within Iroha community
 
+## DEX Technical Documentation
+
+To learn more about additional `dex` module, follow [this documentation](dex-documentation/documentation.md)
+
 ## License
 
 Iroha codebase is licensed under the Apache License,

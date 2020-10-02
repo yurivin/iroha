@@ -1,0 +1,271 @@
+Part of output for: cargo test --features "dex" -- --nocapture --test-threads=1
+
+test dex::isi::tests::test_create_and_delete_token_pair_should_pass ... 
+
+Starting Test: Create and delete token pair
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Token pair created
+Removing token pair: XOR-Soramitsu/DOT-Polkadot
+Token pair removed
+Test Success: Token pair created and removed
+ok
+
+test dex::isi::tests::test_initialize_dex_should_fail_with_permission_not_found ... 
+
+Starting Test: Initialize DEX without permission
+Registering account: dex_owner@Soramitsu
+Initializing DEX in domain: Soramitsu, with owner: dex_owner@Soramitsu, base_asset: XOR#Soramitsu
+Test Success: dex not initialized
+ok
+
+test dex::isi::tests::test_initialize_dex_should_pass ... 
+
+Starting Test: Initialize DEX
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Test Success: new dex initialized
+ok
+
+test dex::isi::tests::test_xyk_pool_add_liquidity_should_pass ... 
+
+Starting Test: Add liquidity to XYK Pool
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: Trader@Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: Trader@Soramitsu, with quantity: 5000
+Mint Asset with Id: DOT#Polkadot, for Account: Trader@Soramitsu, with quantity: 7000
+Adding liquidity: account Trader@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 5916, base asset reserve: 5000, target asset reserve: 7000, k last: 0
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool Storage - base asset reserve: 5000, target asset reserve: 7000
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XOR#Soramitsu, quantity: 0
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: DOT#Polkadot, quantity: 0
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 4916
+Test Successful: liquidity added
+ok
+
+test dex::isi::tests::test_xyk_pool_create_should_pass ... 
+
+Starting Test: Create XYK Pool
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Test Successful: pool created with default values
+ok
+
+test dex::isi::tests::test_xyk_pool_get_base_amount_in_should_pass ... ok
+test dex::isi::tests::test_xyk_pool_get_base_amount_out_should_pass ... ok
+
+test dex::isi::tests::test_xyk_pool_get_owned_liquidity_should_pass ... 
+
+ Starting Test: Get owned liquidity on XYK Pool
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: LP1@Soramitsu
+Add transfer permission for Account: LP1@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: LP1@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: LP1@Soramitsu, with quantity: 5000
+Mint Asset with Id: DOT#Polkadot, for Account: LP1@Soramitsu, with quantity: 7000
+Create Account with Id: LP2@Soramitsu
+Add transfer permission for Account: LP2@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: LP2@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: LP2@Soramitsu, with quantity: 5000
+Mint Asset with Id: DOT#Polkadot, for Account: LP2@Soramitsu, with quantity: 7000
+Adding liquidity: account LP1@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Adding liquidity: account LP2@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Check owned liquidity: account LP1@Soramitsu, owns 4154 of base and 5816 of target on xyk pool XOR-Soramitsu/DOT-Polkadot in domain Soramitsu
+Check owned liquidity: account LP2@Soramitsu, owns 5000 of base and 7000 of target on xyk pool XOR-Soramitsu/DOT-Polkadot in domain Soramitsu
+Test Successful: data received
+ok
+
+test dex::isi::tests::test_xyk_pool_get_price_should_pass ... 
+
+Starting Test: Get price of tokens on XYK Pool
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: Trader@Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: Trader@Soramitsu, with quantity: 5000
+Mint Asset with Id: DOT#Polkadot, for Account: Trader@Soramitsu, with quantity: 7000
+Adding liquidity: account Trader@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Got price: for path [AssetDefinitionId { name: "XOR", domain_name: "Soramitsu" }, AssetDefinitionId { name: "DOT", domain_name: "Polkadot" }], requested input amount 500, received output amount 635
+Got price: for path [AssetDefinitionId { name: "XOR", domain_name: "Soramitsu" }, AssetDefinitionId { name: "DOT", domain_name: "Polkadot" }], requested output amount 500, received input amount 635
+Got price: for path [AssetDefinitionId { name: "DOT", domain_name: "Polkadot" }, AssetDefinitionId { name: "XOR", domain_name: "Soramitsu" }], requested input amount 780, received output amount 500
+Got price: for path [AssetDefinitionId { name: "DOT", domain_name: "Polkadot" }, AssetDefinitionId { name: "XOR", domain_name: "Soramitsu" }], requested output amount 780, received input amount 500
+Test Successful: prices match
+ok
+
+test dex::isi::tests::test_xyk_pool_get_target_amount_in_should_pass ... ok
+test dex::isi::tests::test_xyk_pool_get_target_amount_out_should_pass ... ok
+test dex::isi::tests::test_xyk_pool_optimal_liquidity_should_pass ... ok
+test dex::isi::tests::test_xyk_pool_quote_should_pass ... ok
+
+test dex::isi::tests::test_xyk_pool_remove_liquidity_should_pass ... 
+
+Starting Test: Remove liquidity from XYK Pool
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: Trader@Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: Trader@Soramitsu, with quantity: 5000
+Mint Asset with Id: DOT#Polkadot, for Account: Trader@Soramitsu, with quantity: 7000
+Adding liquidity: account Trader@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Removing liquidity: domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, pool tokens 4916, min received base 0, min received target 0
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 1000, base asset reserve: 846, target asset reserve: 1184, k last: 0
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool Storage - base asset reserve: 846, target asset reserve: 1184
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XOR#Soramitsu, quantity: 4154
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: DOT#Polkadot, quantity: 5816
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 0
+Test Successful: liquidity removed from pool
+ok
+
+test dex::isi::tests::test_xyk_pool_swap_assets_in_should_pass ... 
+
+Starting Test: Swap assets on XYK Pool with desired input amount
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: Trader@Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: Trader@Soramitsu, with quantity: 7000
+Mint Asset with Id: DOT#Polkadot, for Account: Trader@Soramitsu, with quantity: 7000
+Adding liquidity: account Trader@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Swap exact tokens for tokens: account Trader@Soramitsu, desired input 2000, min received 0
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 5916, base asset reserve: 7000, target asset reserve: 5005, k last: 0
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool Storage - base asset reserve: 7000, target asset reserve: 5005
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XOR#Soramitsu, quantity: 0
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: DOT#Polkadot, quantity: 1995
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 4916
+Test Successful: swap performed
+ok
+
+test dex::isi::tests::test_xyk_pool_swap_assets_out_should_pass ... 
+
+Starting Test: Swap assets on XYK Pool with desired output amount
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create Account with Id: Trader@Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: Trader@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: Trader@Soramitsu, with quantity: 7000
+Mint Asset with Id: DOT#Polkadot, for Account: Trader@Soramitsu, with quantity: 7000
+Adding liquidity: account Trader@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 5000, desired target 7000, min base 4000, min target 6000
+Swap tokens for exact tokens: account Trader@Soramitsu, desired output 1995, max spent 4294967295
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 5916, base asset reserve: 6999, target asset reserve: 5005, k last: 0
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool Storage - base asset reserve: 6999, target asset reserve: 5005
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XOR#Soramitsu, quantity: 1
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: DOT#Polkadot, quantity: 1995
+Checking Asset quantity for Account: Trader@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 4916
+Test Successful: swap performed
+ok
+
+test dex::isi::tests::test_xyk_pool_two_liquidity_providers_one_trader_should_pass ... 
+
+Starting Test: Usecase with two liquidity providers and one trader
+Initializing DEX in domain: Soramitsu, with owner: dex owner@Soramitsu, base_asset: XOR#Soramitsu
+Register Asset with Id: XOR#Soramitsu
+Register Domain with name: Polkadot
+Register Asset with Id: DOT#Polkadot
+Register Domain with name: Kusama
+Register Asset with Id: KSM#Kusama
+Create Token Pair with base asset: XOR#Soramitsu, target asset: DOT#Polkadot
+Create Token Pair with base asset: XOR#Soramitsu, target asset: KSM#Kusama
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/DOT-Polkadot
+Create XYK Pool in Domain: Soramitsu, for pair: XOR-Soramitsu/KSM-Kusama
+Create Account with Id: User A@Soramitsu
+Add transfer permission for Account: User A@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu
+Add transfer permission for Account: User A@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/KSM-Kusama#Soramitsu
+Add transfer permission for Account: User A@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: User A@Soramitsu, to transfer asset: DOT#Polkadot
+Add transfer permission for Account: User A@Soramitsu, to transfer asset: KSM#Kusama
+Mint Asset with Id: XOR#Soramitsu, for Account: User A@Soramitsu, with quantity: 12000
+Mint Asset with Id: DOT#Polkadot, for Account: User A@Soramitsu, with quantity: 4000
+Mint Asset with Id: KSM#Kusama, for Account: User A@Soramitsu, with quantity: 3000
+Create Account with Id: User B@Soramitsu
+Add transfer permission for Account: User B@Soramitsu, to transfer asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu
+Add transfer permission for Account: User B@Soramitsu, to transfer asset: XOR#Soramitsu
+Add transfer permission for Account: User B@Soramitsu, to transfer asset: DOT#Polkadot
+Mint Asset with Id: XOR#Soramitsu, for Account: User B@Soramitsu, with quantity: 500
+Mint Asset with Id: DOT#Polkadot, for Account: User B@Soramitsu, with quantity: 500
+Create Account with Id: User C@Soramitsu
+Add transfer permission for Account: User C@Soramitsu, to transfer asset: KSM#Kusama
+Mint Asset with Id: KSM#Kusama, for Account: User C@Soramitsu, with quantity: 2000
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 0, base asset reserve: 0, target asset reserve: 0, k last: 0
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/KSM-Kusama
+Checking XYK Pool state - pool token total supply: 0, base asset reserve: 0, target asset reserve: 0, k last: 0
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: XOR#Soramitsu, quantity: 12000
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: DOT#Polkadot, quantity: 4000
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: KSM#Kusama, quantity: 3000
+Checking Asset quantity for Account: User B@Soramitsu, of Asset: XOR#Soramitsu, quantity: 500
+Checking Asset quantity for Account: User B@Soramitsu, of Asset: DOT#Polkadot, quantity: 500
+Checking Asset quantity for Account: User C@Soramitsu, of Asset: KSM#Kusama, quantity: 2000
+Adding liquidity: account User A@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 6000, desired target 4000, min base 0, min target 0
+Adding liquidity: account User A@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/KSM-Kusama, desired base 6000, desired target 3000, min base 0, min target 0
+Adding liquidity: account User B@Soramitsu, domain Soramitsu, pair XOR-Soramitsu/DOT-Polkadot, desired base 500, desired target 500, min base 0, min target 0
+Swap exact tokens for tokens: account User C@Soramitsu, desired input 2000, min received 0
+Removing liquidity: domain Soramitsu, pair XOR-Soramitsu/KSM-Kusama, pool tokens 407, min received base 0, min received target 0
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool state - pool token total supply: 4898, base asset reserve: 8211, target asset reserve: 2927, k last: 0
+Starting checking XYK Pool state: in domain Soramitsu for pair XOR-Soramitsu/KSM-Kusama
+Checking XYK Pool state - pool token total supply: 4242, base asset reserve: 3607, target asset reserve: 5000, k last: 0
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/DOT-Polkadot
+Checking XYK Pool Storage - base asset reserve: 8211, target asset reserve: 2927
+Starting checking XYK Pool Storage: in domain Soramitsu for pair XOR-Soramitsu/KSM-Kusama
+Checking XYK Pool Storage - base asset reserve: 3607, target asset reserve: 5000
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: XOR#Soramitsu, quantity: 0
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: DOT#Polkadot, quantity: 0
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: KSM#Kusama, quantity: 0
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 3898
+Checking Asset quantity for Account: User A@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/KSM-Kusama#Soramitsu, quantity: 3242
+Checking Asset quantity for Account: User B@Soramitsu, of Asset: XOR#Soramitsu, quantity: 682
+Checking Asset quantity for Account: User B@Soramitsu, of Asset: DOT#Polkadot, quantity: 410
+Checking Asset quantity for Account: User B@Soramitsu, of Asset: XYKPOOL XOR-Soramitsu/DOT-Polkadot#Soramitsu, quantity: 0
+Checking Asset quantity for Account: User C@Soramitsu, of Asset: KSM#Kusama, quantity: 0
+Checking Asset quantity for Account: User C@Soramitsu, of Asset: DOT#Polkadot, quantity: 1163
+Test Successful: usecase passed
+ok
