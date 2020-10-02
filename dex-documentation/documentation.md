@@ -155,7 +155,7 @@ cargo test --features "dex" -- --nocapture --test-threads=1
 # or single exact test
 cargo test test_xyk_pool_add_liquidity_should_pass --features "dex" -- --nocapture --test-threads=1
 ```
-Tests output with detailed logs are provided as `tests.log` file for convenience.
+Tests output with detailed logs are provided as [tests.log](tests.log) file for convenience.
 
 ### Run tests without logs
 ```shell
@@ -360,4 +360,4 @@ Perform liquidity operation with:
 ./iroha_client_cli dex xyk_pool --domain="Soramitsu" --base_asset_id="XOR#Soramitsu" --target_asset_id="DOT#Polkadot" remove_liquidity --liquidity="407"
 ```
 
-All commands for this CLI Usecase can be also found in `/demo/swap_tokens_xyk_pool_v2.txt`.
+All commands for this CLI Usecase can be also found [here](demo/swap_tokens_xyk_pool_v2.txt).
