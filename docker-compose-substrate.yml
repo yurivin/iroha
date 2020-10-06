@@ -48,4 +48,4 @@ services:
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "RUST_LOG=pallet_iroha_bridge=debug ./substrate-iroha-bridge-node --dev --ws-external & RUST_LOG=error ./iroha > /dev/null & sleep 10 && ./bridge-tester"
+    command: bash -c "(cd unit && RUST_LOG=debug ./iroha-tests --nocapture --test-threads=1 && cd ..) && (./iroha > /dev/null & RUST_LOG=pallet_iroha_bridge=debug ./substrate-iroha-bridge-node --tmp --dev --ws-external & RUST_LOG=error & (sleep 10 && ./bridge-tester))"

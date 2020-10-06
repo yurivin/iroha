@@ -807,10 +807,6 @@ pub mod isi {
                     world_state_view,
                 )?;
 
-                // bonding edits
-                // review
-                // discussion
-                // docker
                 self.mint_protocol_fee(world_state_view)?;
 
                 let amount_base = liquidity * balance_base / self.pool_token_total_supply;

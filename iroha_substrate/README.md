@@ -2,9 +2,9 @@
 
 A bridge between Iroha and Substrate blockchains.
 
-_Warning: this repository is a part of [Iroha](https://github.com/vmarkushin/iroha/tree/bridge-ms2) and will not work on it's own. To build or run the code you need to clone the Iroha repository:_
+_Warning: this repository is a part of [Iroha](https://github.com/vmarkushin/iroha/tree/dex-ms3) and will not work on it's own. To build or run the code you need to clone the Iroha repository:_
 ```
-git clone --recurse-submodules --branch bridge-ms2 https://github.com/vmarkushin/iroha.git && cd iroha
+git clone --recurse-submodules --branch dex-ms3 https://github.com/vmarkushin/iroha.git && cd iroha
 ```
 
 ## Project structure
@@ -21,7 +21,7 @@ git clone --recurse-submodules --branch bridge-ms2 https://github.com/vmarkushin
         - `iroha-bridge/` - Iroha-Substrate bridge pallet
             - `src/...`
             - `tests/...` - _tests are under development_
-- `bridge-tester` - demo for the functionality
+- `bridge-tester` - demo of the functionality
 
 ## Local Development
 
@@ -99,7 +99,7 @@ This command will compile the code and let you run process manually.
 
 #### Run precompiled binaries
 
-You can run the precompiled binaries for the bridge including the bridge tester.
+You can run the precompiled binaries for the bridge including the bridge tester and DEX tests.
 
 ```bash
 ./iroha_substrate/substrate-iroha-bridge-node/scripts/docker_run_precompiled.sh

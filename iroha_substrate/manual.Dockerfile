@@ -32,7 +32,7 @@ RUN set -eux; \
   	rm rustup-init; \
   	chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
 # install Rust nightly, default is stable
-	rustup install nightly; \
+	rustup install nightly-2020-10-01; \
 # install sccache
 	cargo install sccache --features redis; \
 # versions
@@ -62,9 +62,9 @@ RUN set -eux; \
 	cargo install cargo-audit cargo-web wasm-pack cargo-deny wasm-bindgen-cli; \
 # install wasm toolchain
 	rustup target add wasm32-unknown-unknown; \
-	rustup target add wasm32-unknown-unknown --toolchain nightly; \
+	rustup target add wasm32-unknown-unknown --toolchain nightly-2020-10-01; \
 # install wasm-gc. It's useful for stripping slimming down wasm binaries (polkadot)
-	cargo +nightly install wasm-gc; \
+	cargo +nightly-2020-10-01 install wasm-gc; \
 # versions
 	rustup show; \
 	cargo --version; \
