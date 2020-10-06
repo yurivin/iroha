@@ -14,11 +14,6 @@ RUN \
 	apt install -y --no-install-recommends \
 		libssl-dev lld clang \
 		pkg-config; \
-# 	apt install -y --no-install-recommends \
-# 		libssl-dev clang lld libclang-dev make cmake \
-# 		git pkg-config curl time rhash ca-certificates; \
-# set a link to clang
-# 	update-alternatives --install /usr/bin/cc cc /usr/bin/clang 100; \
 	apt autoremove -y; \
 	apt clean; \
 	rm -rf /var/lib/apt/lists/* \
