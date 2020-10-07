@@ -142,6 +142,9 @@ If the output (target) token is XOR, the input (user) amount is derived as follo
 
 ## Build and Run
 
+### Docker images with tests including Bridge
+Instructions on using docker images of pre-built DEX and Bridge modules can be found [here](../iroha_substrate/README.md).
+
 ### Requirements:
 - linux / unix-based OS
 - docker, docker-compose
@@ -318,7 +321,7 @@ To perform a liqudity operation, use:
 ```
 
 ### Step 3 - User B adds liqudity to pool XOR-DOT
-The state of the User Account and Pool Reserve Account can be checked (e.g. before and after theoperation) via:
+The state of the User Account and Pool Reserve Account can be checked (e.g. before and after the operation) via:
 ```shell
 # CWD must be /demo/user_b
 ./iroha_client_cli account get --domain="Soramitsu" --name="User B"

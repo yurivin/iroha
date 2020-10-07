@@ -70,7 +70,7 @@ You can also discuss your concerns and proposals and simply chat about Iroha the
 
 ## DEX Technical Documentation
 
-To learn more about additional `dex` module, follow [this documentation](dex-documentation/documentation.md)
+To learn more about additional `dex` module, follow [this documentation](dex-documentation/README.md)
 
 ## License
 
