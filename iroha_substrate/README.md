@@ -1,4 +1,4 @@
-# Iroha Bridge
+# Iroha Bridge with DEX module
 
 A bridge between Iroha and Substrate blockchains.
 
