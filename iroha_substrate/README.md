@@ -1,6 +1,6 @@
 # Iroha Bridge with DEX module
 
-A bridge between Iroha and Substrate blockchains.
+A Iroha DEX and bridge between Iroha and Substrate blockchains.
 
 _Warning: this repository is a part of [Iroha](https://github.com/vmarkushin/iroha/tree/dex-ms3) and will not work on it's own. To build or run the code you need to clone the Iroha repository:_
 ```
